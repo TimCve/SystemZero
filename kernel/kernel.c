@@ -1,13 +1,13 @@
-#include "drivers/ports.h"
-#include "drivers/screen.h"
-#include "drivers/ata.h"
+#include "drivers/utils/ports.h"
+#include "drivers/screen/screen.h"
+#include "drivers/disk/ata.h"
 
 #include <stdint.h>
 
 void main() {
 	// system init message
 	clear();
-	print("Memory address of kernel main: 0x"); print_hex(main); print_newline();
+	print("Memory address of kernel main: 0x"); print_hex((int)main); print_newline();
 	
 	print_newline();
 
@@ -38,7 +38,7 @@ void main() {
 	}
 	
 	print("Writing 0x41 to disk sector 0..."); print_newline(); print_newline();
-	write_sectors_ATA_PIO(0x0, 1, write_buffer);
+	write_sectors_ATA_PIO(0x0, 1, (uint32_t*)write_buffer);
 	
 	print("Reading from disk sector 0..."); print_newline();
 	read_sectors_ATA_PIO(target, 0x0, 1);

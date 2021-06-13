@@ -1,6 +1,7 @@
 #include <stdint.h>
+
 #include "ata.h"
-#include "ports.h"
+#include "../utils/ports.h"
 
 #define STATUS_BSY 0x80
 #define STATUS_RDY 0x40
@@ -13,7 +14,7 @@
 static void ATA_wait_BSY();
 static void ATA_wait_DRQ();
 
-void read_sectors_ATA_PIO(uint32_t target_address, uint32_t LBA, uint8_t sector_count)
+void read_sectors_ATA_PIO(uint32_t* target_address, uint32_t LBA, uint8_t sector_count)
 {
 
 	ATA_wait_BSY();
