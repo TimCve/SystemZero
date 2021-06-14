@@ -19,19 +19,22 @@ void clear() {
 	set_cursor_position(0x00);
 }
 
-// prints ASCII string
-void print(char* string) {
+void scroll_terminal() {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
-	int pos = 0;
 
-	while(string[pos] != 0x00) {
-		video_memory[cursor_pos] = string[pos++];
-		video_memory[cursor_pos + 1] = STD_COLOR;
-		cursor_pos = cursor_pos + 2;
+	if(cursor_pos >= (ROWS * COLS) * 2) {
+		for(int i = COLS * 2; i < (ROWS * COLS) * 2; i++) {
+			video_memory[i - (COLS * 2)] = video_memory[i];
+		}
+
+		for(int i = ((COLS * (ROWS - 1)) * 2); i < (ROWS * COLS) * 2; i += 2) {
+			video_memory[i] = 0x00;
+			video_memory[i + 1] = STD_COLOR;
+		}
+
+		set_cursor_position(COLS * (ROWS - 1) * 2);
 	}
-
-	set_cursor_position(cursor_pos);
 }
 
 // print single character at cursor position
@@ -44,6 +47,17 @@ void print_char(char ch) {
 	cursor_pos += 2;
 	
 	set_cursor_position(cursor_pos);
+	scroll_terminal();
+}
+
+// prints ASCII string
+void print(char* string) {
+	int pos = 0;
+
+	while(string[pos] != 0x00) {
+		print_char(string[pos]);
+		pos++;
+	}
 }
 
 // recursive function to print decimal integer
@@ -73,6 +87,7 @@ void print_newline() {
 
 	for(index = 0; index <= get_cursor_position(); index += (COLS * 2));
 		set_cursor_position(get_cursor_position() - ((COLS * 2) - (index - get_cursor_position())));
+	scroll_terminal();
 }
 
 int get_cursor_position() {

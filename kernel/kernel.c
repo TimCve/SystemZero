@@ -7,6 +7,7 @@
 void main() {
 	// system init message
 	clear();
+
 	print("Memory address of kernel main: 0x"); print_hex((int)main); print_newline();
 	
 	print_newline();
@@ -47,6 +48,15 @@ void main() {
 	while(i < 128) {
 		print_hex(target[i] & 0xFF); print_char(' ');
 		print_hex((target[i] >> 8) & 0xFF); print_char(' ');
+		i++;
+	}
+	
+	print_newline();
+	print_newline();
+	
+	i = 0;
+	while(i < 20) {
+		print("testing terminal scroll ");
 		i++;
 	}
 }
