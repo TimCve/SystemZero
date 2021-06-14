@@ -29,7 +29,7 @@ load_kernel:
 	call print_string
 
 	mov bx, KERNEL_OFFSET	; load to address KERNEL_OFFSET (0x1000)
-	mov dh, 15		; load up 15 sectors after the boot sector
+	mov dh, 20		; load up 20 sectors after the boot sector
 	mov dl, [BOOT_DRIVE]
 	call disk_load
 
@@ -50,8 +50,8 @@ BEGIN_PM:
 ; variables
 BOOT_DRIVE: db 0
 MSG_REAL_MODE: db "Started in 16-bit Real Mode", 0xa, 0xd, 0
-MSG_PROT_MODE: db "Successfully landed in 32-bit Protected Mode", 0
-MSG_LOAD_KERNEL: db "Loading kernel into memory", 0
+MSG_PROT_MODE: db "Successfully landed in 32-bit Protected Mode", 0xa, 0xd, 0
+MSG_LOAD_KERNEL: db "Loading kernel into memory", 0xa, 0xd, 0
 
 ; boot sector padding
 times 510-($-$$) db 0
