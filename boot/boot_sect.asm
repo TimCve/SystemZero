@@ -16,11 +16,11 @@ call switch_to_pm
 
 jmp $
 
-%include "boot/print_string.asm"
-%include "boot/disk_load.asm"
-%include "boot/print_string_pm.asm"
-%include "boot/gdt.asm"
-%include "boot/switch_to_pm.asm"
+%include "boot/include/print_string.asm"
+%include "boot/include/disk_load.asm"
+%include "boot/include/print_string_pm.asm"
+%include "boot/include/gdt.asm"
+%include "boot/include/switch_to_pm.asm"
 
 [bits 16]
 
@@ -29,7 +29,7 @@ load_kernel:
 	call print_string
 
 	mov bx, KERNEL_OFFSET	; load to address KERNEL_OFFSET (0x1000)
-	mov dh, 20		; load up 20 sectors after the boot sector
+	mov dh, 13	; load up 13 sectors after the boot sector
 	mov dl, [BOOT_DRIVE]
 	call disk_load
 
