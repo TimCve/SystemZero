@@ -4,5 +4,5 @@
 void kmain()
 {
 	// actual kernel starts here
-	print("Kernel has been successfully loaded, happy hacking!"); print_newline();
+	print("Kernel successfully initialized!"); print_newline();
 }
