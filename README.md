@@ -1,5 +1,5 @@
 # OSDev
-A basic operating system project with a bootloader, kernel and set of core utilities built entirely from scratch.
+A basic operating system project built entirely from scratch.
 
 ### Makefile rules
 
