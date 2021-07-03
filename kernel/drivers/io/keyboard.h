@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include "../utils/ports.h"
-#include "../screen/screen.h"
+#include "screen.h"
 
 #define KEYBOARD_PORT 0x60
 
@@ -18,4 +18,4 @@
 #define U_ARROW 0x48
 #define D_ARROW 0x50
 
-void kbd_input();
+void kbd_readline();

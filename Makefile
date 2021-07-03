@@ -4,7 +4,7 @@ LD_FLAGS = -m elf_i386 -nostdlib
 CC := gcc ${CC_FLAGS}
 LD := ld ${LD_FLAGS} 
 
-BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/screen/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
+BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 
 all: prep os-image.bin
 
@@ -42,8 +42,11 @@ build/bootloader/loader.bin: build/bootloader/loader_full.elf
 	# clean up unnecessary files
 	# rm build/bootloader/*.o build/bootloader/*.elf build/drivers/*.o
 
+build/kernel/interrupt.o: kernel/cpu/interrupt.asm
+	nasm $^ -f elf -o $@
+
 # compile kernel & write to 10MB raw drive image
-build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/*.c
+build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/cpu/*.c build/kernel/interrupt.o kernel/*.c
 	${CC} $^  -o build/kernel/kernel.o -T ld/kernel.ld
 	./scripts/write_kernel_to_drive.sh
 

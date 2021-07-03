@@ -53,48 +53,42 @@ char get_input_scancode() {
     return scancode;
 }
 
-void sleep(int time) {   
-    volatile int i, j;
-    for(i = 0; i < time; i++)
-        for(j = 0; j < 250000; j++)
-            __asm__("NOP");
-}
-
 int handle_special_keypress(unsigned char scancode) {
 	switch(scancode) {
 		case BACKSPACE:
 			set_cursor_position(get_cursor_position() - 2);
 			print_char(0x0);
 			set_cursor_position(get_cursor_position() - 2);
-			return 0;
+			return BACKSPACE;
 		case R_ARROW:
 			set_cursor_position(get_cursor_position() + 2);
-			return 0;
+			return R_ARROW;
 		case L_ARROW:
 			set_cursor_position(get_cursor_position() - 2);
-			return 0;
+			return L_ARROW;
 		case U_ARROW:
 			set_cursor_position(get_cursor_position() - COLS * 2);
-			return 0;
+			return U_ARROW;
 		case D_ARROW:
 			set_cursor_position(get_cursor_position() + COLS * 2);
-			return 0;
+			return D_ARROW;
 		case ENTER:
 			print_newline();
-			return 0;
+			return ENTER;
 		case TAB:
 			print("    ");
-			return 0;
+			return TAB;
 		default:
 			return 1;
 	}
 }
 
-void kbd_input() {
-	unsigned char prev_scancode = 0x0;
+void kbd_readline(char* buffer) {
+	unsigned char prev_scancode = ENTER;
 	int hold_index = 0;
 	char prev_held_char = 0x0;
 	char prev_held_special_key = 0x0;
+	char special_key;
 
 	uint8_t shift_pressed = 0;
 
@@ -116,8 +110,29 @@ void kbd_input() {
 			char chr = get_ascii_char(scancode, 0, shift_pressed);
 			if(chr) {
 				print_char(chr);
+				*(buffer) = chr;
+				*buffer++;
 			}
-			handle_special_keypress(scancode);
+
+			special_key = handle_special_keypress(scancode);
+
+			if(special_key == ENTER) {
+				break;
+			} 
+
+			switch(special_key) {
+				case BACKSPACE:
+					*(buffer--) = 0x0;
+					*buffer = 0x0;
+					*buffer--;
+				case R_ARROW:
+					*(buffer+=2);
+				case L_ARROW:
+					*(buffer--);
+				default:
+					break;
+			}
+
 		// handles held key pressess
 		} else if((scancode & 128) != 128) {
 			hold_index++;
@@ -128,11 +143,11 @@ void kbd_input() {
 
 		// weird bug where the top row sends scancodes faster (this code accounts for that)
 		if(scancode == 0x29 || scancode == 0x2 || scancode == 0x3 || scancode == 0x4 || scancode == 0x5 || scancode == 0x6 || scancode == 0x7 || scancode == 0x8 || scancode == 0x9 || scancode == 0xA || scancode == 0xB || scancode == 0xC || scancode == 0xD) {
-			hold_init_threshold = 640000;
-			hold_cont_threshold = 101000;
+			hold_init_threshold = 750000;
+			hold_cont_threshold = 150000;
 		} else {
-			hold_init_threshold = 140000;
-			hold_cont_threshold = 21000;
+			hold_init_threshold = 120000;
+			hold_cont_threshold = 20000;
 		}
 
 		if((hold_index >= hold_init_threshold && get_ascii_char(scancode, 0, shift_pressed) != prev_held_char && get_ascii_char(scancode, 0, shift_pressed) != 0) ||
@@ -142,11 +157,31 @@ void kbd_input() {
 			char chr = get_ascii_char(scancode, 0, shift_pressed);
 			if(chr) {
 				print_char(chr);
+				*(buffer) = chr;
+				*buffer++;
 				prev_held_char = chr;
 				prev_held_special_key = 0x0;
 				hold_index = 0;
 			} else {
-				handle_special_keypress(scancode);
+				special_key = handle_special_keypress(scancode);
+
+				if(special_key == ENTER) {
+					break;
+				} 
+
+				switch(special_key) {
+					case BACKSPACE:
+						*(buffer--) = 0x0;
+						*buffer = 0x0;
+						*buffer--;
+					case R_ARROW:
+						*(buffer+=2);
+					case L_ARROW:
+						*(buffer--);
+					default:
+						break;
+				}
+				special_key = 0x0;
 				prev_held_special_key = scancode;
 				prev_held_char = 0x0;
 				hold_index = 0;

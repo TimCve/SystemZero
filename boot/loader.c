@@ -1,5 +1,5 @@
 #include "../kernel/drivers/utils/ports.h"
-#include "../kernel/drivers/screen/screen.h"
+#include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/ata.h"
 #include "../kernel/drivers/utils/mem.h"
 
