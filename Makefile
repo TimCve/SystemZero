@@ -6,10 +6,13 @@ LD := ld ${LD_FLAGS}
 
 BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 
-all: prep os-image.bin
+raw: prep os-image.bin
+vmdk: prep os-image.vmdk
+
+all: prep os-image.vmdk
 
 # run OS in QEMU
-run: all
+run: 
 	qemu-system-x86_64 -drive format=raw,file=os-image.bin
 
 # assemble boot sector
@@ -46,24 +49,27 @@ build/kernel/interrupt.o: kernel/cpu/interrupt.asm
 	nasm $^ -f elf -o $@
 
 # compile kernel & write to 10MB raw drive image
-build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/cpu/*.c build/kernel/interrupt.o kernel/*.c
-	${CC} $^  -o build/kernel/kernel.o -T ld/kernel.ld
+build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/cpu/*.c kernel/libc/*.c build/kernel/interrupt.o kernel/*.c
+	${CC} $^ -o build/kernel/kernel.o -T ld/kernel.ld
 	./scripts/write_kernel_to_drive.sh
 
 # concat 3 boot stages into os-image file
 os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/kernel/hdd.bin
 	cat $^ > $@
 
+os-image.vmdk: os-image.bin
+	qemu-img convert -O vmdk $^ $@
+
 # prepare directory structure for build process
 prep:
 	mkdir -p build/bootloader
 	mkdir -p build/drivers
-	mkdir -p build/kernel 
+	mkdir -p build/kernel
 
 # clean up build files and os-image binary
 clean:
 	-rm -rf build/
-	-rm *.bin
+	-rm *.bin *.vmdk
 
 
 

@@ -2,6 +2,7 @@
 
 #include "ata.h"
 #include "../utils/ports.h"
+#include "../io/screen.h"
 
 #define STATUS_BSY 0x80
 #define STATUS_RDY 0x40
@@ -9,7 +10,7 @@
 #define STATUS_DF 0x20
 #define STATUS_ERR 0x01
 
-// ATA bus 0 is master
+// ATA bus 0 master
 
 static void ATA_wait_BSY();
 static void ATA_wait_DRQ();
@@ -18,12 +19,12 @@ void read_sectors_ATA_PIO(uint32_t* target_address, uint32_t LBA, uint8_t sector
 {
 
 	ATA_wait_BSY();
-	port_byte_out(0x1F6,0xE0 | ((LBA >>24) & 0xF));
-	port_byte_out(0x1F2,sector_count);
+	port_byte_out(0x1F6, 0xE0 | ((LBA >> 24) & 0xF));
+	port_byte_out(0x1F2, sector_count);
 	port_byte_out(0x1F3, (uint8_t) LBA);
 	port_byte_out(0x1F4, (uint8_t)(LBA >> 8));
 	port_byte_out(0x1F5, (uint8_t)(LBA >> 16)); 
-	port_byte_out(0x1F7,0x20); // read command
+	port_byte_out(0x1F7, 0x20); // read command
 
 	uint16_t *target = (uint16_t*) target_address;
 
@@ -40,12 +41,12 @@ void read_sectors_ATA_PIO(uint32_t* target_address, uint32_t LBA, uint8_t sector
 void write_sectors_ATA_PIO(uint32_t LBA, uint8_t sector_count, uint32_t* bytes)
 {
 	ATA_wait_BSY();
-	port_byte_out(0x1F6,0xE0 | ((LBA >>24) & 0xF));
-	port_byte_out(0x1F2,sector_count);
+	port_byte_out(0x1F6, 0xE0 | ((LBA >> 24) & 0xF));
+	port_byte_out(0x1F2, sector_count);
 	port_byte_out(0x1F3, (uint8_t) LBA);
 	port_byte_out(0x1F4, (uint8_t)(LBA >> 8));
 	port_byte_out(0x1F5, (uint8_t)(LBA >> 16)); 
-	port_byte_out(0x1F7,0x30); // write command
+	port_byte_out(0x1F7, 0x30); // write command
 
 	for (int j =0;j<sector_count;j++)
 	{

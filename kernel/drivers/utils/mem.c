@@ -17,3 +17,17 @@ uint32_t malloc(uint32_t size, int align, uint32_t *phys_addr) {
     free_mem_addr += size; /* Remember to increment the pointer */
     return ret;
 } 
+
+void *memcpy(void *dst, const void *src, uint32_t cnt) {
+    char *psz_dest = (char*)dst;
+    const char *psz_source = (const char*)src;
+
+    if((psz_dest != 0) && (psz_source != 0)) {
+        while(cnt) {
+            *(psz_dest++) = *(psz_source++);
+            cnt--;
+        }
+    }
+
+    return dst;
+}
