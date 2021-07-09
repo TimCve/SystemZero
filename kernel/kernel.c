@@ -83,6 +83,8 @@ void kmain()
 
 	print("Welcome to the built-in kernel shell.");
 	print_newline();
+	print("\"help\" to bring up command menu");
+	print_newline();
 
 	while(1) {
 		for(int i = 0; i < 2000; i++) {
@@ -127,5 +129,15 @@ void kmain()
 		}
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_read") == 0) file_read(splice(kbd_buffer, 1, 0x20));
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_delete") == 0) file_delete(splice(kbd_buffer, 1, 0x20));
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "help") == 0) {
+			print("cls: clear screen"); print_newline();
+			print("disk_read <block> <num_of_blocks>: read bytes from disk"); print_newline();
+			print("file_create <name>: create a file (no spaces in name)"); print_newline();
+			print("file_list: list all files"); print_newline();
+			print("file_write <name> <content>: write to file (content can have spaces)"); print_newline();
+			print("file_read <name>: read ascii text from file"); print_newline();
+			print("file_delete <name>: delete a file"); print_newline();
+			print("help: bring up this menu"); print_newline();
+		}
 	}
 }
