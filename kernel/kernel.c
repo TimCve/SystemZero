@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
 #include "drivers/io/keyboard.h"
 #include "cpu/isr.h"
@@ -85,6 +86,7 @@ void kmain()
 	print_newline();
 	print("\"help\" to bring up command menu");
 	print_newline();
+	// __asm__("int $0");
 
 	while(1) {
 		for(int i = 0; i < 2000; i++) {
@@ -96,9 +98,9 @@ void kmain()
 
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "cls") == 0) clear();
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "disk_read") == 0) disk_read(atoi(splice(kbd_buffer, 1, 0x20)), atoi(splice(kbd_buffer, 2, 0x20)));
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_create") == 0) file_create(splice(kbd_buffer, 1, 0x20));
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_list") == 0) file_list();
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_write") == 0) {
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "touch") == 0) file_create(splice(kbd_buffer, 1, 0x20));
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "list") == 0) file_list();
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "write") == 0) {
 			static char filename[512];
 			static char data[512];
 
@@ -116,7 +118,7 @@ void kmain()
 				}
 			}
 
-			i+= 12;
+			i += 7;
 
 			int k = 0;
 			while(i < 512) {
@@ -127,16 +129,31 @@ void kmain()
 
 			file_write(filename, data);
 		}
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_read") == 0) file_read(splice(kbd_buffer, 1, 0x20));
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "file_delete") == 0) file_delete(splice(kbd_buffer, 1, 0x20));
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "read") == 0) {
+			if(strcmp("-c", splice(kbd_buffer, 1, 0x20)) == 0) file_read(splice(kbd_buffer, 2, 0x20), 'c');
+			else if(strcmp("-b", splice(kbd_buffer, 1, 0x20)) == 0) file_read(splice(kbd_buffer, 2, 0x20), 'b');
+			else file_read(splice(kbd_buffer, 1, 0x20), 'c');
+		} 
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "del") == 0) file_delete(splice(kbd_buffer, 1, 0x20));
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "color") == 0) {
+			set_term_color((atoi(splice(kbd_buffer, 2, 0x20)) * 16) + atoi(splice(kbd_buffer, 1, 0x20)));
+		}
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "shutdown") == 0) {
+			print_newline(); print("Shutting down..."); print_newline();
+			port_word_out(0x4004, 0x3400);
+		}
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "help") == 0) {
 			print("cls: clear screen"); print_newline();
 			print("disk_read <block> <num_of_blocks>: read bytes from disk"); print_newline();
-			print("file_create <name>: create a file (no spaces in name)"); print_newline();
-			print("file_list: list all files"); print_newline();
-			print("file_write <name> <content>: write to file (content can have spaces)"); print_newline();
-			print("file_read <name>: read ascii text from file"); print_newline();
-			print("file_delete <name>: delete a file"); print_newline();
+			print("touch <name>: create a file (no spaces in name)"); print_newline();
+			print("list: list all files"); print_newline();
+			print("write <name> <content>: write to file (content can have spaces)"); print_newline();
+			print("read <format> <name>: read ascii text from file"); print_newline();
+			print("--> -b for bytes | -c for ASCII | no options will auto pick ASCII"); print_newline();
+			print("del <name>: delete a file"); print_newline();
+			print("color <foreground> <background>"); print_newline();
+			print("--> color values are 0 - 15 (VGA 16-color mode)"); print_newline();
+			print("shutdown: shut down the computer"); print_newline();
 			print("help: bring up this menu"); print_newline();
 		}
 	}

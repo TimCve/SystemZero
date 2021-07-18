@@ -2,6 +2,7 @@
 #include "idt.h"
 #include "../drivers/io/screen.h"
 #include "../drivers/utils/ports.h"
+#include "../vga_colors.h"
 
 isr_t interrupt_handlers[256];
 
@@ -111,8 +112,11 @@ char exception_messages[][30] = {
 };
 
 void isr_handler(registers_t r) {
+    set_term_color(ERR_COLOR);
     print("Received interrupt: 0x"); print_hex(r.int_no); print_newline();
-    print(exception_messages[r.int_no]); print_newline();
+    print(exception_messages[r.int_no]); 
+    set_term_color(STD_COLOR);
+    print_newline();
 }
 
 void register_interrupt_handler(uint8_t n, isr_t handler) {

@@ -141,14 +141,22 @@ void kbd_readline(char* buffer) {
 		int hold_init_threshold;
 		int hold_cont_threshold;
 
+		/*
 		// weird bug where the top row sends scancodes faster (this code accounts for that)
 		if(scancode == 0x29 || scancode == 0x2 || scancode == 0x3 || scancode == 0x4 || scancode == 0x5 || scancode == 0x6 || scancode == 0x7 || scancode == 0x8 || scancode == 0x9 || scancode == 0xA || scancode == 0xB || scancode == 0xC || scancode == 0xD) {
-			hold_init_threshold = 750000;
-			hold_cont_threshold = 150000;
+			hold_init_threshold = 720000;
+			hold_cont_threshold = 140000;
+		} else if (scancode == BACKSPACE){
+			hold_init_threshold = 100000;
+			hold_cont_threshold = 12000;
 		} else {
-			hold_init_threshold = 120000;
-			hold_cont_threshold = 20000;
+			hold_init_threshold = 100000;
+			hold_cont_threshold = 14000;
 		}
+		*/
+
+		hold_init_threshold = 160000;
+		hold_cont_threshold = 36000;
 
 		if((hold_index >= hold_init_threshold && get_ascii_char(scancode, 0, shift_pressed) != prev_held_char && get_ascii_char(scancode, 0, shift_pressed) != 0) ||
 		   (hold_index >= hold_cont_threshold && get_ascii_char(scancode, 0, shift_pressed) == prev_held_char && get_ascii_char(scancode, 0, shift_pressed) != 0) ||

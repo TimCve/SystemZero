@@ -7,7 +7,9 @@ LD := ld ${LD_FLAGS}
 BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 
 raw: prep os-image.bin
+
 vmdk: prep os-image.vmdk
+	VBoxManage internalcommands sethduuid /home/tim/Dev/OSDev/os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
 
 all: prep os-image.vmdk
 

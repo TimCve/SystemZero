@@ -28,7 +28,6 @@ void format_disk() {
 	inode.valid = 0;
 	inode.size = 0;
 	for(i = 0; i < 12; i++) inode.direct_pointers[i] = 0;
-	for(i = 0; i < 2; i++) inode.indirect_pointers[i] = 0;
 
 	i = 0;
 	while(i < 512) {
@@ -64,6 +63,7 @@ int check_disk_fs() {
 
 void file_create(char* name) {
 	uint32_t bread[128];
+	uint32_t dread[128];
 	uint8_t bwrite[512];
 	int i;
 	int j;
@@ -144,6 +144,7 @@ void file_list() {
 				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
 				if(dbread[0] > 0) {
 					print("name: ");
+
 					int k = 0;
 					while(k < 128) {
 						if((dbread[k] & 0xFF) > 0) {
@@ -189,7 +190,7 @@ inode_t get_file_info(uint8_t* name) {
 		dbread[i] = 0;
 	}
 
-	for(i = 0; i< 512; i++) name_buffer[i] = 0;
+	for(i = 0; i < 512; i++) name_buffer[i] = 0;
 
 	file_info.valid = 0;
 	file_info.size = 0;
@@ -258,7 +259,7 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 					bread[j] = file_info.valid;
 					bread[j + 1] = file_info.size;
 					for(int a = 2; a < 14; a++) bread[j + a] = file_info.direct_pointers[a - 2];
-					for(int a = 14; a < 16; a++) bread[j + a] = file_info.indirect_pointers[a - 14];
+					for(int a = 14; a < 16; a++) bread[j + a] = file_info.direct_pointers[a - 14];
 
 					write_sectors_ATA_PIO(superblock_block + i, 1, bread);
 				}
@@ -270,7 +271,7 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 	}
 }
 
-int allocate_data_block(uint8_t* name) {
+int allocate_data_block() {
 	int free_block;
 	uint32_t bread[512];
 	for(int i = (superblock_block) + superblock.inode_blocks; i <= superblock.blocks; i++) {
@@ -362,7 +363,7 @@ void file_write(uint8_t* name, uint8_t* data) {
 		set_file_info(name_save, file_info);
 		if(data_i >= 512) {
 			data_i = 0;
-			file_info.direct_pointers[w_direct_ptr + 1] = allocate_data_block(name_save);
+			file_info.direct_pointers[w_direct_ptr + 1] = allocate_data_block();
 			set_file_info(name_save, file_info);
 			continue;
 		} else {
@@ -376,7 +377,7 @@ void file_write(uint8_t* name, uint8_t* data) {
 	set_file_info(name_save, file_info);
 }
 
-void file_read(uint8_t* name) {
+void file_read(uint8_t* name, char format) {
 	inode_t file_info = get_file_info(name);
 	int i = 0;
 	uint32_t bread[128];
@@ -392,7 +393,11 @@ void file_read(uint8_t* name) {
 
 				while(j < 512) {
 					if(bread_bytes[j] > 0 && end_of_name > 0) {
-						print_char(bread_bytes[j]);
+						if(format == 'b') {
+							print_hex(bread_bytes[j]); print_char(' ');
+						} else {
+							print_char(bread_bytes[j]);
+						}
 					} else if(bread_bytes[j] == 0 && end_of_name == 0) {
 						end_of_name = 1;
 					}
@@ -416,7 +421,6 @@ void file_delete(uint8_t* name) {
 		file_info_new.valid = 0;
 		file_info_new.size = 0;
 		for(i = 0; i < 12; i++) file_info_new.direct_pointers[i] = 0;
-		for(i = 0; i < 2; i++) file_info_new.indirect_pointers[i] = 0;
 
 		set_file_info(name, file_info_new);
 		for(i = 0; i < 12; i++) {

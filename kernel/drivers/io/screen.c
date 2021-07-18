@@ -1,4 +1,5 @@
 #include "screen.h"
+#include "../../vga_colors.h"
 #include "../utils/ports.h"
 
 void set_cursor_position(int offset);
@@ -7,13 +8,19 @@ int get_cursor_position();
 void print(char* string);
 void print_newline();
 
+uint8_t term_color = STD_COLOR;
+
+void set_term_color(uint8_t color) {
+	term_color = color;
+}
+
 // clears screen & sets cursor position to screen start
 void clear() {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 
 	for(int i = 0; i < COLS * ROWS * 2; i += 2) {
 		video_memory[i] = 0x00;
-		video_memory[i + 1] = STD_COLOR;
+		video_memory[i + 1] = term_color;
 	}	
 
 	set_cursor_position(0x00);
@@ -30,7 +37,7 @@ void scroll_terminal() {
 
 		for(int i = ((COLS * (ROWS - 1)) * 2); i < (ROWS * COLS) * 2; i += 2) {
 			video_memory[i] = 0x00;
-			video_memory[i + 1] = STD_COLOR;
+			video_memory[i + 1] = term_color;
 		}
 
 		set_cursor_position(COLS * (ROWS - 1) * 2);
@@ -43,7 +50,7 @@ void print_char(char ch) {
 	int cursor_pos = get_cursor_position();
 	
 	video_memory[cursor_pos] = ch;
-	video_memory[cursor_pos + 1] = STD_COLOR;
+	video_memory[cursor_pos + 1] = term_color;
 	cursor_pos += 2;
 	
 	set_cursor_position(cursor_pos);
