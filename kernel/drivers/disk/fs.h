@@ -12,8 +12,7 @@ typedef struct {
 typedef struct {
 	uint32_t valid;
 	uint32_t size;
-	uint32_t direct_pointers[12];
-	uint32_t indirect_pointers[2];
+	uint32_t indirect_pointers[14];
 } inode_t;
 
 void format_disk();
@@ -23,5 +22,5 @@ void file_list();
 inode_t get_file_info(uint8_t* name);
 void set_file_info(uint8_t* name, inode_t file_info);
 void file_write(uint8_t* name, uint8_t* data);
-void file_read(uint8_t* name, char format);
+void file_read(uint8_t* name);
 void file_delete(uint8_t* name);

@@ -27,7 +27,7 @@ void format_disk() {
 	for(i = 0; i < 512; i++) bwrite[i] = 0;
 	inode.valid = 0;
 	inode.size = 0;
-	for(i = 0; i < 12; i++) inode.direct_pointers[i] = 0;
+	for(i = 0; i < 14; i++) inode.indirect_pointers[i] = 0;
 
 	i = 0;
 	while(i < 512) {
@@ -62,6 +62,12 @@ int check_disk_fs() {
 }
 
 void file_create(char* name) {
+	inode_t file_info = get_file_info(name);
+	if(file_info.valid == 1) {
+		print("File already exists!"); print_newline();
+		return;
+	}
+
 	uint32_t bread[128];
 	uint32_t dread[128];
 	uint8_t bwrite[512];
@@ -85,7 +91,7 @@ void file_create(char* name) {
 
 		while(j <= 128) {
 			if(bread[j] == 0) {
-				print("Free inode available in sector "); print_dec(superblock_block + i); print(", inode "); print_dec(j / 16); print_newline();
+				// print("Free inode available in sector "); print_dec(superblock_block + i); print(", inode "); print_dec(j / 16); print_newline();
 
 				inode.valid = 1;
 				inode.size = name_size + 1;
@@ -93,6 +99,7 @@ void file_create(char* name) {
 				memcpy(bwrite, &bread, sizeof(bread));
 
 				uint32_t free_block = 0;
+				uint32_t free_block_2 = 0;
 				int l = 0;
 				for(int k = (superblock_block) + superblock.inode_blocks; k <= superblock.blocks; k++) {
 					read_sectors_ATA_PIO(bread, k, 1);
@@ -102,19 +109,26 @@ void file_create(char* name) {
 					}
 
 					if(l >= 127) {
-						free_block = k;
-						break;
+						if(free_block > 0) {
+							free_block_2 = k;
+							break;
+						}
+						if(free_block == 0) free_block = k;
 					} 
 				}
 
-				print("Free data block (block "); print_dec(free_block); print(") has been found!"); print_newline();
+				// print("Free pointer block (block "); print_dec(free_block); print(") has been found!"); print_newline();
+				// print("Free data block (block "); print_dec(free_block_2); print(") has been found!"); print_newline();
 
-				inode.direct_pointers[0] = free_block;
+				inode.indirect_pointers[0] = free_block;
 				memcpy(bwrite + (j * 4), &inode, sizeof(inode));
 
 				write_sectors_ATA_PIO(superblock_block + i, 1, bwrite);
+				for(int v = 0; v < 512; v++) bwrite[v] = 0;
+				memcpy(bwrite, &free_block_2, sizeof(free_block_2));
 
-				write_sectors_ATA_PIO(free_block, 1, name);
+				write_sectors_ATA_PIO(free_block, 1, bwrite);
+				write_sectors_ATA_PIO(free_block_2, 1, name);
 
 				print("File successfully created!"); print_newline();
 				return;
@@ -128,51 +142,45 @@ void file_create(char* name) {
 }
 
 void file_list() {
-	uint32_t bread[128];
-	uint32_t dbread[128];
-	int i;
-	int j;
-	int null_file_cnt = 0;
+	uint32_t inode_block_read[128];
+	uint32_t data_block_read[128];
+	uint8_t data_block_read_bytes[512];
+	int null_files = 0;
 
-	i = 1;
-	while(null_file_cnt < 100) {
-		read_sectors_ATA_PIO(bread, superblock_block + i, 1);
+	int	block_i = 1;
+	while(null_files <= 100) {
+		read_sectors_ATA_PIO(inode_block_read, superblock_block + block_i, 1);
 
-		j = 0;
-		while(j <= 128) {
-			if((bread[j] == 1) && null_file_cnt < 100) {
-				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
-				if(dbread[0] > 0) {
-					print("name: ");
+		int inode_i = 0;
+		while(inode_i <= 128) {
+			if(inode_block_read[inode_i] == 1) {
+				null_files = 0;
 
-					int k = 0;
-					while(k < 128) {
-						if((dbread[k] & 0xFF) > 0) {
-							print_char(dbread[k] & 0xFF);
-						} else break;
+				int file_size = inode_block_read[inode_i + 1];
+				read_sectors_ATA_PIO(data_block_read, inode_block_read[inode_i + 2], 1);
+				read_sectors_ATA_PIO(data_block_read, data_block_read[0], 1);
+	
+				memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
 
-						if(((dbread[k] >> 8) & 0xFF) > 0) {
-							print_char((dbread[k] >> 8) & 0xFF);
-						} else break;
+				char chr = 0;
+				int chr_i = 0;
+				do {
+					chr = data_block_read_bytes[chr_i];
+					print_char(chr);
+					chr_i++;
+				} while(chr);
 
-						if(((dbread[k] >> 16) & 0xFF) > 0) {
-							print_char((dbread[k] >> 16) & 0xFF);
-						} else break;
-
-						if(((dbread[k] >> 24) & 0xFF) > 0) { 
-							print_char((dbread[k] >> 24) & 0xFF);
-						} else break;
-						k++;
-					}
-
-					print("  ["); print_dec(bread[j + 1]); print(" bytes]"); print_newline();
-				}
-			} else null_file_cnt++;
-			j += 16;
+				print("  ["); print_dec(file_size); print(" bytes]");
+				print_newline();
+				inode_i += 16;
+			} else {
+				null_files++;
+				inode_i += 16;
+				continue;
+			}
 		}
-
-		i++;
-	}
+		block_i++;
+	}	
 }
 
 inode_t get_file_info(uint8_t* name) {
@@ -194,8 +202,7 @@ inode_t get_file_info(uint8_t* name) {
 
 	file_info.valid = 0;
 	file_info.size = 0;
-	for(i = 0; i < 12; i++) file_info.direct_pointers[i] = 0;
-	for(i = 0; i < 2; i++) file_info.indirect_pointers[i] = 0;
+	for(i = 0; i < 14; i++) file_info.indirect_pointers[i] = 0;
 
 	i = 1;
 	while(null_file_cnt < 100) {
@@ -206,6 +213,7 @@ inode_t get_file_info(uint8_t* name) {
 			if(bread[j] == 1) {
 				null_file_cnt = 0;
 				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
+				read_sectors_ATA_PIO(dbread, dbread[0], 1);
 				memcpy(name_buffer, &dbread, sizeof(dbread));
 
 				int set_to_zero = 0;
@@ -217,8 +225,7 @@ inode_t get_file_info(uint8_t* name) {
 				if(strcmp(name_buffer, name) == 0) {
 					file_info.valid = 1;
 					file_info.size = bread[j + 1];
-					for(int a = 2; a < 14; a++) file_info.direct_pointers[a - 2] = bread[j + a];
-					for(int a = 14; a < 16; a++) file_info.indirect_pointers[a - 14] = bread[j + a];
+					for(int a = 2; a < 16; a++) file_info.indirect_pointers[a - 2] = bread[j + a];
 
 					return file_info;
 				}
@@ -247,8 +254,9 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 			if(bread[j] == 1) {
 				null_file_cnt = 0;
 				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
+				read_sectors_ATA_PIO(dbread, dbread[0], 1);
 				memcpy(name_buffer, &dbread, sizeof(dbread));
-
+	
 				int set_to_zero = 0;
 				for(int k = 0; k < 512; k++) {
 					if(name_buffer[k] == 0) set_to_zero = 1;
@@ -258,8 +266,7 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 				if(strcmp(name_buffer, name) == 0) {
 					bread[j] = file_info.valid;
 					bread[j + 1] = file_info.size;
-					for(int a = 2; a < 14; a++) bread[j + a] = file_info.direct_pointers[a - 2];
-					for(int a = 14; a < 16; a++) bread[j + a] = file_info.direct_pointers[a - 14];
+					for(int a = 2; a < 16; a++) bread[j + a] = file_info.indirect_pointers[a - 2];
 
 					write_sectors_ATA_PIO(superblock_block + i, 1, bread);
 				}
@@ -272,17 +279,22 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 }
 
 int allocate_data_block() {
-	int free_block;
-	uint32_t bread[512];
-	for(int i = (superblock_block) + superblock.inode_blocks; i <= superblock.blocks; i++) {
-		read_sectors_ATA_PIO(bread, i, 1);
-		int j = 0;
-		for(j = 0; j < 128; j++) {
-			if(bread[j] > 0) break;
-		}
+	int free_block = 0;
+	uint32_t data_block_read[128];
 
-		if(j >= 127) {
-			free_block = i;
+	// iterate through all possible data blocks
+	for(int block_i = (superblock_block) + superblock.inode_blocks; block_i <= superblock.blocks; block_i++) {
+		// read the contents of every block into memory
+		read_sectors_ATA_PIO(data_block_read, block_i, 1);
+		
+		// iterate through the contents and see if there is any data stored in the block
+		int data_i;
+		for(data_i = 0; data_i < 128; data_i++) if(data_block_read[data_i]) break;
+
+		// if there are no contents in the block, data_i would have reached the end
+		// therefore return the free block
+		if(data_i >= 127) {
+			free_block = block_i;
 			break;
 		} 
 	}
@@ -291,140 +303,152 @@ int allocate_data_block() {
 }
 
 void file_write(uint8_t* name, uint8_t* data) {
-	uint32_t bread[128];
-	uint8_t bread_bytes[512];
-	uint8_t name_save[512];
-	uint8_t bwrite[512];
-	int data_i;
+	inode_t file_info = get_file_info(name);
+	uint32_t ptr_block_read[128];
+	uint32_t data_block_read[128];
+	uint8_t data_block_read_bytes[512];
 	int write_size = 0;
-	int w_direct_ptr;
 
-	for(data_i = 0; data_i < 512; data_i++) {
-		bwrite[data_i] = 0;
-		name_save[data_i] = 0;
-	}
-
-	data_i = 0;
-	while(*name) {
-		bwrite[data_i] = *name;
-		name_save[data_i] = bwrite[data_i];
-		*name++;
-		data_i++;
-	}
-	data_i++;
-
-	inode_t file_info = get_file_info(name_save);
 	if(file_info.valid != 1) {
 		print("File doesn't exist!"); print_newline();
 		return;
 	}
 
-	while(1) {
-		file_info = get_file_info(name_save);
+	// iterate through all the pointers in the inode
+	for(int ptr_i = 0; ptr_i < 14; ptr_i++)	{
+		// if pointer exists, read pointer block into memory and iterate through it
+		if(file_info.indirect_pointers[ptr_i]) {
+			read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
+			for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) {
+				// if a pointer in the pointer block exists, read it into memory and check if it is full
+				// --> if full, continue onto next pointer
+				// --> if not full, write data to it until either data ends (break) or data block fills up (continue onto next pointer)
+				if(ptr_block_read[ptr_block_i]) {
+					read_sectors_ATA_PIO(data_block_read, ptr_block_read[ptr_block_i], 1);
+					memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
+					if(data_block_read_bytes[511]) { // data block is full
+						if(ptr_block_read[ptr_block_i + 1]) continue;
+						else { // if no more data blocks exist, create one
+							ptr_block_read[ptr_block_i + 1] = allocate_data_block();
+							write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
+							continue;
+						} 
+					} else { // data block is not full
+						int name_end; // first block in first pointer block also contains the file name, we need to check that in order
+									  // to not overwrite the file name
+						if(ptr_i == 0 && ptr_block_i == 0) name_end = 0;
+						if(ptr_i != 0 || ptr_block_i != 0) name_end = 1;
 
-		for(int i = 0; i < 512; i++) bwrite[i] = 0;
-
-		for(w_direct_ptr = 0; w_direct_ptr < 12; w_direct_ptr++) {
-			if(file_info.direct_pointers[w_direct_ptr] > 0) {
-				read_sectors_ATA_PIO(bread, file_info.direct_pointers[w_direct_ptr], 1);
-				if(bread[127] > 0) {
-					continue;
-				} else {
-					memcpy(bread_bytes, &bread, sizeof(bread));
-					int end_of_name = 0;
-					data_i = 0;
-					for(int k = 0; k < 512; k++) {
-						if(bread_bytes[k] == 0 && w_direct_ptr == 0 && end_of_name == 0) {
-							end_of_name = 1;
-						} else if(bread_bytes[k] == 0 && w_direct_ptr > 0) {
-							break;
-						} else if(bread_bytes[k] == 0 && end_of_name == 1 && w_direct_ptr == 0) {
-							break;
+						// iterate through the bytes of the data block
+						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
+							// if the name has already been passed, write data to any null byte
+							if(data_block_read_bytes[data_block_i] == 0 && name_end == 1) {
+								if(*data) {
+									data_block_read_bytes[data_block_i] = *data;
+									*data++;
+									write_size++;
+								}
+							}
+							// if name has not been passed and there is a null byte, ignore it and set name_end = 1
+							// that way the next null byte will have data written to it
+							if(data_block_read_bytes[data_block_i] == 0 && name_end == 0) name_end = 1;
 						}
+						// write the data that we stored in memory back to the disk
+						write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, data_block_read_bytes);
 
-						bwrite[data_i] = bread_bytes[k];
-						data_i++;
+						// if this is the last pointer in the pointer block and it is full, create a new pointer block
+						if(ptr_block_read[511] && ptr_block_i == 127) {
+							file_info.indirect_pointers[ptr_i] = allocate_data_block();
+							// write those changes to the inode to the disk
+							set_file_info(name, file_info);
+						}
+						
+						// if there is no more data to be written, break from the loop
+						if(!*data) break;	
 					}
-					break;
-				}
+				}	
 			}
 		}
-
-		while(*data) {
-			if(data_i >= 512) break;
-			bwrite[data_i] = *data;
-			*data++;
-			data_i++;
-			write_size++;
-		}
-
-		write_sectors_ATA_PIO(file_info.direct_pointers[w_direct_ptr], 1, bwrite);
-
-		set_file_info(name_save, file_info);
-		if(data_i >= 512) {
-			data_i = 0;
-			file_info.direct_pointers[w_direct_ptr + 1] = allocate_data_block();
-			set_file_info(name_save, file_info);
-			continue;
-		} else {
-			break;
-		}
+		// if there is no more data to be written, break from the loop
+		if(!*data) break;
 	}
-
-
+	
+	// update the file size in the inode
 	file_info.size += write_size;
-	print("Wrote "); print_dec(write_size); print(" bytes to \""); print(name_save); print("\""); print_newline();
-	set_file_info(name_save, file_info);
+	set_file_info(name, file_info);
+	print("Wrote "); print_dec(write_size); print(" bytes to "); print(name); print_newline();
 }
 
-void file_read(uint8_t* name, char format) {
+file_read(uint8_t* name) {
 	inode_t file_info = get_file_info(name);
-	int i = 0;
-	uint32_t bread[128];
-	uint8_t bread_bytes[512];
-	int end_of_name = 0;
+	uint32_t ptr_block_read[128];
+	uint32_t data_block_read[128];
+	uint8_t data_block_read_bytes[512];
 
-	if(file_info.valid == 1) {
-		while(i < 12) {
-			if(file_info.direct_pointers[i] != 0) {
-				read_sectors_ATA_PIO(bread, file_info.direct_pointers[i], 1);
-				memcpy(bread_bytes, &bread, sizeof(bread));
-				int j = 0;
+	// the filename is stored in the file contents separated from the actual contents by a null byte,
+	// this variable gets set to 1 when the first null byte is encountered	
+	int name_passed = 0;
 
-				while(j < 512) {
-					if(bread_bytes[j] > 0 && end_of_name > 0) {
-						if(format == 'b') {
-							print_hex(bread_bytes[j]); print_char(' ');
-						} else {
-							print_char(bread_bytes[j]);
+	// check if the file actually exists
+	if(file_info.indirect_pointers[0]) {
+		// iterate through all indirect pointers in the inode	
+		for(int ptr_i = 0; ptr_i < 14; ptr_i++) {
+			if(file_info.indirect_pointers[ptr_i]) {
+				// read contents of pointer block into memory
+				read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
+				// iterate through all the pointers in the read pointer block
+				for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) {
+					// if a block exists, read it into memory and iterate through it
+					if(ptr_block_read[ptr_block_i]) {
+						read_sectors_ATA_PIO(data_block_read, ptr_block_read[ptr_block_i], 1);
+						memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
+						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
+							// print bytes in the file as ASCII characters
+							if(data_block_read_bytes[data_block_i] && name_passed == 1) print_char(data_block_read_bytes[data_block_i]);
+							// enables reading after the filename has been passed (so only the actual contents are read)
+							if(!data_block_read_bytes[data_block_i] && name_passed == 0) name_passed = 1;
 						}
-					} else if(bread_bytes[j] == 0 && end_of_name == 0) {
-						end_of_name = 1;
-					}
-					j++;
-				}
+					}	
+				}			
 			}
-			i++;
 		}
 		print_newline();
+	} else {
+		print("File doesn't exist!"); print_newline();	
 	}
 }
 
 void file_delete(uint8_t* name) {
 	inode_t file_info = get_file_info(name);
-	inode_t file_info_new;
-	int i = 0;
-	static uint8_t bwrite[512];
-	for(i = 0; i < 512; i++) bwrite[i] = 0;
+	static inode_t updated_file_info;
+	uint32_t ptr_block_read[128];
 
+	// set up a static 512 array of null bytes
+	static uint8_t null_block[512];
+	for(int i = 0; i < 512; i++) null_block[i] = 0;
+
+	// check if the file actually exists
 	if(file_info.valid == 1) {
-		file_info_new.valid = 0;
-		file_info_new.size = 0;
-		for(i = 0; i < 12; i++) file_info_new.direct_pointers[i] = 0;
+		// delete records of the file in the inode blocks
+		updated_file_info.valid = 0;
+		updated_file_info.size = 0;
+		for(int i = 0; i < 14; i++) updated_file_info.indirect_pointers[i] = 0;
+		
+		set_file_info(name, updated_file_info);
 
-		set_file_info(name, file_info_new);
-		for(i = 0; i < 12; i++) {
-			if(file_info.direct_pointers[i] > 0) write_sectors_ATA_PIO(file_info.direct_pointers[i], 1, bwrite);
+		// iterate through all the pointers
+		for(int ptr_i = 0; ptr_i < 14; ptr_i++) {
+			// read the data pointed to by vaid pointers into memory 
+			if(file_info.indirect_pointers[ptr_i]) {
+				read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
+				
+				// delete all data from those data blocks
+				for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) 
+					if(ptr_block_read[ptr_block_i]) write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, null_block);
+			}
 		}
+		print("File successfully deleted!"); print_newline();
+	} else {
+		print("File doesn't exist!"); print_newline();
 	}
 }
