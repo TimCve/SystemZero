@@ -22,5 +22,5 @@ void file_list();
 inode_t get_file_info(uint8_t* name);
 void set_file_info(uint8_t* name, inode_t file_info);
 void file_write(uint8_t* name, uint8_t* data);
-void file_read(uint8_t* name);
+int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint32_t read_offset);
 void file_delete(uint8_t* name);

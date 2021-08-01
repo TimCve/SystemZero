@@ -8,14 +8,16 @@ BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel
 
 raw: prep os-image.bin
 
-vmdk: prep os-image.vmdk
-	VBoxManage internalcommands sethduuid /home/tim/Dev/OSDev/os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
+convert_vmdk: os-image.vmdk	
 
-all: prep os-image.vmdk
+all: prep os-image.bin
+
+ESFS_raw_write: ESFS_raw_write.c
+	gcc $^ -o $@
 
 # run OS in QEMU
 run: 
-	qemu-system-x86_64 -drive format=raw,file=os-image.bin
+	qemu-system-i386 -drive format=raw,file=os-image.bin
 
 # assemble boot sector
 build/bootloader/boot_sect.bin: boot/boot_sect.asm
@@ -59,8 +61,9 @@ build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/cpu/*.c kernel/libc/*.c build/
 os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/kernel/hdd.bin
 	cat $^ > $@
 
-os-image.vmdk: os-image.bin
-	qemu-img convert -O vmdk $^ $@
+os-image.vmdk: 
+	VBoxManage convertfromraw os-image.bin os-image.vmdk --format VMDK
+	VBoxManage internalcommands sethduuid /home/tim/Dev/OSDev/os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
 
 # prepare directory structure for build process
 prep:
@@ -72,10 +75,4 @@ prep:
 clean:
 	-rm -rf build/
 	-rm *.bin *.vmdk
-
-
-
-
-
-
-
+	-rm ESFS_raw_write

@@ -69,6 +69,7 @@ void kmain()
 	// actual kernel starts here
 	print("Kernel successfully initialized!"); print_newline();
 
+
 	print("Installing interrupt service routines..."); print_newline();
 	isr_install();
 	__asm__("sti");
@@ -80,6 +81,12 @@ void kmain()
 	init_timer(1000);
 
 	print_newline();
+
+	uint32_t phy_addr;
+	malloc(50000, 1, &phy_addr);
+
+	// how to allocate memory for a program
+	uint32_t* mem = malloc(1000, 1, &phy_addr);
 
 	char last_kbd_buffer[2000];
 	char kbd_buffer[2000];
@@ -134,29 +141,61 @@ void kmain()
 			
 			file_write(filename, data);
 		}
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "read") == 0) file_read(splice(kbd_buffer, 1, 0x20));
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "read") == 0) {
+			static uint8_t read_target[512];
+			for(int i = 0; i < 512; i++) read_target[i] = 0;
+
+			if(atoi(splice(kbd_buffer, 2, 0x20)) >= 0) {
+				if(atoi(splice(kbd_buffer, 3, 0x20)) > 0) {
+					int read_offset = atoi(splice(kbd_buffer, 2, 0x20));
+
+					int i = 0;
+					do {
+						file_read(splice(kbd_buffer, 1, 0x20), read_target, 1, read_offset);
+						print(read_target);
+						read_offset++;
+						i++;
+					} while(i <= atoi(splice(kbd_buffer, 3, 0x20)));
+
+					print_newline();
+				} else {
+					file_read(splice(kbd_buffer, 1, 0x20), read_target, 1, atoi(splice(kbd_buffer, 2, 0x20)));
+					print(read_target);
+					print_newline();
+				}
+			} else {
+				int file_size = get_file_info(splice(kbd_buffer, 1, 0x20)).size;
+				int sectors_size = file_size / 512;
+				int read_offset = 0;
+
+				while(sectors_size > -1) {
+					for(int i = 0; i < 512; i++) read_target[i] = 0;
+					file_read(splice(kbd_buffer, 1, 0x20), read_target, 1, read_offset);
+					print(read_target);
+					read_offset++;
+					sectors_size--;
+				}
+
+				print_newline();
+			}
+		} 
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "del") == 0) file_delete(splice(kbd_buffer, 1, 0x20)); 
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "color") == 0) set_term_color((atoi(splice(kbd_buffer, 2, 0x20)) * 16) + atoi(splice(kbd_buffer, 1, 0x20)));
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "rep") == 0) {
 			skip_prompt = 1;
 			memcpy(kbd_buffer, &last_kbd_buffer, sizeof(last_kbd_buffer));
 		} else skip_prompt = 0; 
-		if(strcmp(splice(kbd_buffer, 0, 0x20), "end_virt") == 0) {
-			print_newline(); print("Closing virtual machine..."); print_newline();
-			port_word_out(0x4004, 0x3400);
-		}
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "help") == 0) {
 			print("cls: clear screen"); print_newline();
-			print("disk_read <block> <num_of_blocks>: read bytes from disk"); print_newline();
+			print("disk_read <block>: read bytes from disk"); print_newline();
 			print("touch <name>: create a file (no spaces in name)"); print_newline();
 			print("list: list all files"); print_newline();
 			print("write <name> <content>: write to file (content can have spaces)"); print_newline();
-			print("read  <name>: read ascii text from file"); print_newline();
+			print("read <name> <offset (blocks)> <size (blocks)>: read ascii text from file"); print_newline();
 			print("del <name>: delete a file"); print_newline();
 			print("color <foreground> <background>"); print_newline();
 			print("--> color values are 0 - 15 (VGA 16-color mode)"); print_newline();
 			print("rep: repeat previous command"); print_newline();
-			print("end_virt: close virtual machine"); print_newline();
 			print("help: bring up this menu"); print_newline();
 		}
 	}

@@ -13,7 +13,7 @@ void loadkernel() {
 	print_newline();
 
 	uint32_t phy_addr;
-    uint32_t page = malloc(1000, 1, &phy_addr); // allocate memory for kernel
+    uint32_t page = malloc(50000, 1, &phy_addr); // allocate memory for kernel
     print("[LOADER] Page: 0x"); print_hex(page); print_newline();
     print("[LOADER] Physical address: 0x"); print_hex(phy_addr); print_newline();
 
