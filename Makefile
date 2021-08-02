@@ -1,4 +1,4 @@
-CC_FLAGS = -g -m32 -ffreestanding -nostartfiles -nostdlib
+CC_FLAGS = -g -m32 -ffreestanding -nostartfiles -nostdlib -fno-stack-protector
 LD_FLAGS = -m elf_i386 -nostdlib
 
 CC := gcc ${CC_FLAGS}

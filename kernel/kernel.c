@@ -91,6 +91,8 @@ void kmain()
 	char last_kbd_buffer[2000];
 	char kbd_buffer[2000];
 
+	print("This operating system is licensed under the GPLv3.");
+	print_newline(); print_newline();
 	print("Welcome to the built-in kernel shell.");
 	print_newline();
 	print("\"help\" to bring up command menu");
