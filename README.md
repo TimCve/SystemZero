@@ -21,3 +21,19 @@ Usage:
 
 You will now be able to either boot the .bin image in QEMU or the .vmdk image in Virtualbox/VMware and it will contain the file(s) which you have copied onto the disk. Keep in mind that once a disk is converted to .vmdk mode, it can no longer be written to by ESFS_raw_write.
 
+### Writing and compiling an executable to run on the OS
+
+The kernel shell provides an `exec` command which is used to execute a binary executable which is stored as a file on the virtual disk. (I would recommend putting program code into the external_programs directory)
+
+- Write the program in C, you will be able to include any kernel API that is available. View the header files inside the kernel directory to see the options.
+
+- Compilation can be done through the simple `compile_program` script in the format `./compile_program <input_file.c> <output_file>` it is important that you execute the script while being in the directory that the script is in. The script will compile your program together will all available kernel API.
+
+- Writing your program to the OS virtual disk can be done in the same way as writing a standard text file, the procedure is described in the 'How to copy files from host machine to OS virtual hard disk' section.
+
+THANK YOU FOR CHOOSING TO TRY OUT MY OPERATING SYSTEM, IT HAS BEEN ONE OF MY MOST AMBITIOUS AND EXTREMELY FUN PROJECTS YET.
+
+HAPPY HACKING!!!
+
+
+

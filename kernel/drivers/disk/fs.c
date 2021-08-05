@@ -170,15 +170,59 @@ int allocate_data_block() {
 		for(data_i = 0; data_i < 128; data_i++) if(data_block_read[data_i]) break;
 
 		// if there are no contents in the block, data_i would have reached the end
-		// therefore return the free block
+		// now check if this block is used in storing data for files
 		if(data_i >= 127) {
 			free_block = block_i;
-			break;
-		} 
-	}
 
-	return free_block;
+			uint32_t inode_block_read[128];
+
+			int block_i_2 = 1;
+			int null_files = 0;
+
+			while(null_files <= 100) {
+				read_sectors_ATA_PIO(inode_block_read, superblock_block + block_i_2, 1);
+
+				int inode_i = 0;
+
+				while(inode_i <= 128) {
+					if(inode_block_read[inode_i] == 1) {
+						null_files = 0;
+
+						int indirect_ptr_i = 2;
+
+						while(indirect_ptr_i < 16) {
+							read_sectors_ATA_PIO(data_block_read, inode_block_read[inode_i + indirect_ptr_i], 1);
+							for(int i = 0; i < 128; i++) {
+								if(data_block_read[i] == free_block) {
+									free_block = 0;
+									break;
+								}
+							}
+
+							if(free_block == 0) break;
+							indirect_ptr_i++;
+						}
+
+						inode_i += 16;
+					} else {
+						null_files++;
+						inode_i += 16;
+						continue;
+					}
+
+					if(free_block == 0) break;
+				}
+
+				if(free_block == 0) break;
+
+				block_i_2++;
+			}
+		}
+
+		if(free_block != 0) return free_block;
+	}
 }
+
 
 // create a file
 void file_create(char* name) {
@@ -211,40 +255,24 @@ void file_create(char* name) {
 
 		while(j <= 128) {
 			if(bread[j] == 0) {
-				// print("Free inode available in sector "); print_dec(superblock_block + i); print(", inode "); print_dec(j / 16); print_newline();
-
 				inode.valid = 1;
 				inode.size = name_size + 1;
 
 				memcpy(bwrite, &bread, sizeof(bread));
 
-				uint32_t free_block = 0;
-				uint32_t free_block_2 = 0;
-				int l = 0;
-				for(int k = (superblock_block) + superblock.inode_blocks; k <= superblock.blocks; k++) {
-					read_sectors_ATA_PIO(bread, k, 1);
-					l = 0;
-					for(l = 0; l < 128; l++) {
-						if(bread[l] > 0) break;
-					}
-
-					if(l >= 127) {
-						if(free_block > 0) {
-							free_block_2 = k;
-							break;
-						}
-						if(free_block == 0) free_block = k;
-					} 
-				}
-
-				// print("Free pointer block (block "); print_dec(free_block); print(") has been found!"); print_newline();
-				// print("Free data block (block "); print_dec(free_block_2); print(") has been found!"); print_newline();
+				uint32_t free_block = allocate_data_block();
 
 				inode.indirect_pointers[0] = free_block;
 				memcpy(bwrite + (j * 4), &inode, sizeof(inode));
 
 				write_sectors_ATA_PIO(superblock_block + i, 1, bwrite);
+
+				write_sectors_ATA_PIO(free_block, 1, bwrite);
 				for(int v = 0; v < 512; v++) bwrite[v] = 0;
+
+				uint32_t free_block_2 = allocate_data_block();
+				write_sectors_ATA_PIO(free_block, 1, bwrite);
+
 				memcpy(bwrite, &free_block_2, sizeof(free_block_2));
 
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
@@ -408,6 +436,7 @@ int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint3
 	// the filename is stored in the file contents separated from the actual contents by a null byte,
 	// this variable gets set to 1 when the first null byte is encountered	
 	int name_passed = 0;
+	if(read_offset > 0) name_passed = 1;
 
 	// check if the file actually exists
 	if(file_info.indirect_pointers[0]) {
@@ -424,7 +453,7 @@ int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint3
 						memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
 						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
 							// write file bytes to the target addess in memory
-							if(data_block_read_bytes[data_block_i] && name_passed == 1) {
+							if(name_passed == 1) {
 								if(read_i > read_start) {
 									target[target_i] = data_block_read_bytes[data_block_i];
 									target_i++;

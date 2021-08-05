@@ -117,6 +117,7 @@ void isr_handler(registers_t r) {
     print(exception_messages[r.int_no]); 
     set_term_color(STD_COLOR);
     print_newline();
+    return;
 }
 
 void register_interrupt_handler(uint8_t n, isr_t handler) {

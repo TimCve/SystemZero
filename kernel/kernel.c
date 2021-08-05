@@ -82,23 +82,22 @@ void kmain()
 
 	print_newline();
 
-	uint32_t phy_addr;
-	malloc(50000, 1, &phy_addr);
-
-	// how to allocate memory for a program
-	uint32_t* mem = malloc(1000, 1, &phy_addr);
-
 	char last_kbd_buffer[2000];
 	char kbd_buffer[2000];
 
 	print("This operating system is licensed under the GPLv3.");
+	print_newline();
+	print("All source code can be cloned from: https://github.com/TimCve/OSDev.git");
 	print_newline(); print_newline();
 	print("Welcome to the built-in kernel shell.");
 	print_newline();
-	print("\"help\" to bring up command menu");
+	print("\"help\" to bring up command menu.");
 	print_newline();
 	
 	int skip_prompt = 0;
+
+	uint32_t phy_addr;
+	malloc(90000, 1, &phy_addr);
 
 	while(1) {
 		memcpy(last_kbd_buffer, &kbd_buffer, sizeof(kbd_buffer));
@@ -187,6 +186,37 @@ void kmain()
 			skip_prompt = 1;
 			memcpy(kbd_buffer, &last_kbd_buffer, sizeof(last_kbd_buffer));
 		} else skip_prompt = 0; 
+		if(strcmp(splice(kbd_buffer, 0, 0x20), "exec") == 0) {
+			// move pointer back when executing program
+			move_free_ptr_back(54096);
+
+			// allocate memory for program
+			uint32_t program_memory = malloc(50000, 1, &phy_addr);
+
+			// read program into memory
+			int file_size = get_file_info(splice(kbd_buffer, 1, 0x20)).size;
+			file_read(splice(kbd_buffer, 1, 0x20), program_memory, file_size / 512, 0);
+
+			// create a pointer to the program
+			uint32_t* program = program_memory;
+
+			// check if the file is executable
+			if(program[0] == 0x464C457F) {
+				// create pointer to the program's main function (entry point)
+			    void (*func)(void) = program_memory + program[6];
+
+			    print("Program entry point at: 0x"); print_hex((int)func); print_newline();
+
+			    // execute program main function
+    			func();
+
+    			// clear out memory after program has finished execution
+    			for(int i = 0; i < 50000; i++) program[i] = 0;
+			} else {
+				print("This file is not executable!");
+				print_newline();
+			}
+		}
 		if(strcmp(splice(kbd_buffer, 0, 0x20), "help") == 0) {
 			print("cls: clear screen"); print_newline();
 			print("disk_read <block>: read bytes from disk"); print_newline();
@@ -198,6 +228,7 @@ void kmain()
 			print("color <foreground> <background>"); print_newline();
 			print("--> color values are 0 - 15 (VGA 16-color mode)"); print_newline();
 			print("rep: repeat previous command"); print_newline();
+			print("exec <name>: execute an executable file"); print_newline();
 			print("help: bring up this menu"); print_newline();
 		}
 	}

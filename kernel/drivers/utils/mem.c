@@ -17,10 +17,14 @@ uint32_t malloc(uint32_t size, int align, uint32_t *phys_addr) {
     // return the start of free memory
     uint32_t ret = free_mem_addr;
 
-    // increament free memory pointer
+    // increment free memory pointer
     free_mem_addr += size; 
     return ret;
 } 
+
+void move_free_ptr_back(uint32_t amount) {
+    free_mem_addr -= amount;
+}
 
 void *memcpy(void *dst, const void *src, uint32_t cnt) {
     char *psz_dest = (char*)dst;
