@@ -29,7 +29,7 @@ The kernel shell provides an `exec` command which is used to execute a binary ex
 
 - Compilation can be done through the simple `compile_program` script in the format `./compile_program <input_file.c> <output_file>` it is important that you execute the script while being in the directory that the script is in. The script will compile your program together will all available kernel API.
 
-- Writing your program to the OS virtual disk can be done in the same way as writing a standard text file, the procedure is described in the 'How to copy files from host machine to OS virtual hard disk' section.
+- Writing your program to the OS virtual disk can be done in the same way as writing a standard text file, the procedure is described in the "How to copy files from host machine to OS virtual hard disk" section.
 
 THANK YOU FOR CHOOSING TO TRY OUT MY OPERATING SYSTEM, IT HAS BEEN ONE OF MY MOST AMBITIOUS AND EXTREMELY FUN PROJECTS YET.
 
