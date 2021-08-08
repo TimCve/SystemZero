@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include <stdint.h>
 
 typedef struct {
 	char keycode;
@@ -23,7 +24,7 @@ static kbd_keycode shft_keycode_table[] = {
 	{0x0, 0x0}
 };
 
-char get_ascii_char(char keycode, int i, uint8_t shift) {
+char get_printable_char(char keycode, int i, uint8_t shift) {
 	if(shift == 0) {
 		if(keycode == std_keycode_table[i].keycode) {
 			return std_keycode_table[i].chr;
@@ -31,7 +32,7 @@ char get_ascii_char(char keycode, int i, uint8_t shift) {
 			if(std_keycode_table[i].keycode == 0x0) {
 				return 0x0;
 			}
-			return get_ascii_char(keycode, i + 1, shift);
+			return get_printable_char(keycode, i + 1, shift);
 		}
 	} else if(shift == 1) {
 		if(keycode == shft_keycode_table[i].keycode) {
@@ -40,162 +41,168 @@ char get_ascii_char(char keycode, int i, uint8_t shift) {
 			if(shft_keycode_table[i].keycode == 0x0) {
 				return 0x0;
 			}
-			return get_ascii_char(keycode, i + 1, shift);
+			return get_printable_char(keycode, i + 1, shift);
 		}	
 	}
 }
 
-char get_input_scancode() {
-	unsigned char scancode;
+char get_input_keycode() {
+	unsigned char keycode;
 
-    scancode = port_byte_in(0x60);
+    keycode = port_byte_in(0x60);
 
-    return scancode;
+    return keycode;
 }
 
-int handle_special_keypress(unsigned char scancode) {
-	switch(scancode) {
+int translate_special_key(unsigned char keycode) {
+	switch(keycode) {
 		case BACKSPACE:
-			set_cursor_position(get_cursor_position() - 2);
-			print_char(0x0);
-			set_cursor_position(get_cursor_position() - 2);
 			return BACKSPACE;
 		case R_ARROW:
-			set_cursor_position(get_cursor_position() + 2);
 			return R_ARROW;
 		case L_ARROW:
-			set_cursor_position(get_cursor_position() - 2);
 			return L_ARROW;
 		case U_ARROW:
-			set_cursor_position(get_cursor_position() - COLS * 2);
 			return U_ARROW;
 		case D_ARROW:
-			set_cursor_position(get_cursor_position() + COLS * 2);
 			return D_ARROW;
 		case ENTER:
-			print_newline();
 			return ENTER;
 		case TAB:
-			print("    ");
 			return TAB;
 		default:
 			return 1;
 	}
 }
 
+#define INIT_HOLD_ITERATIONS 300000
+#define CONT_HOLD_ITERATIONS 70000
+
 void kbd_readline(char* buffer) {
-	unsigned char prev_scancode = ENTER;
-	int hold_index = 0;
-	char prev_held_char = 0x0;
-	char prev_held_special_key = 0x0;
-	char special_key;
+	uint8_t keycode;
+	uint8_t prev_keycode = ENTER; // so enter key doesn't instantly get spammed upon command execution
+	uint8_t cached_prev_keycode;
+	uint8_t ascii_code;
 
-	uint8_t shift_pressed = 0;
+	int shift_pressed = 0;
+	int hold_iterations = 0;
 
-	while(1) {
-		unsigned char scancode = get_input_scancode();
+	int buffer_i = 0;
 
-		// handles shift key press
-		if(scancode == 0x2a) {
+	while(ascii_code != ENTER) {
+		// get keycode from keyboard port
+		keycode = get_input_keycode();
+
+		// handle shift key press & release
+		if(keycode == 0x2a) {
 			shift_pressed = 1;
-		} else if(scancode == 0xaa) {
+		} else if(keycode == 0xaa) {
 			shift_pressed = 0;
-		}
+		}	
 
-		// handles single key pressess
-		if(scancode != prev_scancode) {
-			prev_held_char = 0x0;
-			prev_held_special_key = 0x0;
-			hold_index = 0;
-			char chr = get_ascii_char(scancode, 0, shift_pressed);
-			if(chr) {
-				print_char(chr);
-				*(buffer) = chr;
-				*buffer++;
-			}
+		if(keycode != prev_keycode) {
+			// reset hold iterations
+			hold_iterations = 0;
 
-			special_key = handle_special_keypress(scancode);
+			// set previous scancode variable for key holding detection
+			prev_keycode = keycode;
 
-			if(special_key == ENTER) {
-				break;
-			} 
+			// attempt translation of recieved keycode to printable character
+			ascii_code = get_printable_char(keycode, 0, shift_pressed);
 
-			switch(special_key) {
-				case BACKSPACE:
-					*(buffer--) = 0x0;
-					*buffer = 0x0;
-					*buffer--;
-				case R_ARROW:
-					*(buffer+=2);
-				case L_ARROW:
-					*(buffer--);
-				default:
-					break;
-			}
+			if(ascii_code) { // character is printable
+				if(!buffer[buffer_i]) { // insert character at end of text
+					buffer[buffer_i] = ascii_code;
+					print_char(buffer[buffer_i]);
+					buffer_i++;
+				} else { // insert character between existing text
+					int counter = 0;
 
-		// handles held key pressess
-		} else if((scancode & 128) != 128) {
-			hold_index++;
-		}
+					// seek to end of text
+					while(buffer[buffer_i]) {
+						buffer_i++;
+						set_cursor_position(get_cursor_position() + 2);
+						counter++;
+					}
 
-		int hold_init_threshold;
-		int hold_cont_threshold;
+					// shift characters on right of insertion to right by 1 place
+					// also seek back to initial point
+					while(counter > 0) {
+						buffer[buffer_i] = buffer[buffer_i - 1];
+						print_char(buffer[buffer_i]);
+						set_cursor_position(get_cursor_position() - 2);
+						counter--;
+						buffer_i--;
+						set_cursor_position(get_cursor_position() - 2);
+					}
 
-		/*
-		// weird bug where the top row sends scancodes faster (this code accounts for that)
-		if(scancode == 0x29 || scancode == 0x2 || scancode == 0x3 || scancode == 0x4 || scancode == 0x5 || scancode == 0x6 || scancode == 0x7 || scancode == 0x8 || scancode == 0x9 || scancode == 0xA || scancode == 0xB || scancode == 0xC || scancode == 0xD) {
-			hold_init_threshold = 720000;
-			hold_cont_threshold = 140000;
-		} else if (scancode == BACKSPACE){
-			hold_init_threshold = 100000;
-			hold_cont_threshold = 12000;
-		} else {
-			hold_init_threshold = 100000;
-			hold_cont_threshold = 14000;
-		}
-		*/
-
-		hold_init_threshold = 160000;
-		hold_cont_threshold = 36000;
-
-		if((hold_index >= hold_init_threshold && get_ascii_char(scancode, 0, shift_pressed) != prev_held_char && get_ascii_char(scancode, 0, shift_pressed) != 0) ||
-		   (hold_index >= hold_cont_threshold && get_ascii_char(scancode, 0, shift_pressed) == prev_held_char && get_ascii_char(scancode, 0, shift_pressed) != 0) ||
-		   (get_ascii_char(scancode, 0, shift_pressed) == 0 && hold_index >= hold_init_threshold && prev_held_special_key != scancode) ||
-		   (get_ascii_char(scancode, 0, shift_pressed) == 0 && hold_index >= hold_cont_threshold && prev_held_special_key == scancode)) {
-			char chr = get_ascii_char(scancode, 0, shift_pressed);
-			if(chr) {
-				print_char(chr);
-				*(buffer) = chr;
-				*buffer++;
-				prev_held_char = chr;
-				prev_held_special_key = 0x0;
-				hold_index = 0;
-			} else {
-				special_key = handle_special_keypress(scancode);
-
-				if(special_key == ENTER) {
-					break;
-				} 
-
-				switch(special_key) {
-					case BACKSPACE:
-						*(buffer--) = 0x0;
-						*buffer = 0x0;
-						*buffer--;
-					case R_ARROW:
-						*(buffer+=2);
-					case L_ARROW:
-						*(buffer--);
-					default:
-						break;
+					// insert desired character
+					buffer[buffer_i] = ascii_code;
+					print_char(buffer[buffer_i]);
+					buffer_i++;
 				}
-				special_key = 0x0;
-				prev_held_special_key = scancode;
-				prev_held_char = 0x0;
-				hold_index = 0;
-			}
-		}
+			} else { // character is not printable
+				ascii_code = translate_special_key(keycode);
 
-		prev_scancode = scancode;
-	}
+				// special character handlers
+				switch(ascii_code) {
+					case L_ARROW: {
+						if(buffer[buffer_i - 1]) {
+							buffer_i--;
+							set_cursor_position(get_cursor_position() - 2);
+						}
+						break;
+					}
+					case R_ARROW: {
+						if(buffer[buffer_i]) {
+							buffer_i++;
+							set_cursor_position(get_cursor_position() + 2);
+						}
+						break;
+					}
+					case BACKSPACE: {
+						if(buffer[buffer_i - 1]) {
+							int counter = 0;
+
+							buffer_i--;
+							set_cursor_position(get_cursor_position() - 2);
+
+							// seek to end of text & shift characters left by 1 place
+							while(buffer[buffer_i]) {
+								buffer[buffer_i] = buffer[buffer_i + 1];
+								print_char(buffer[buffer_i]);
+								buffer_i++;
+								counter++;
+							}
+
+							// reset cursor and buffer index
+							while(counter > 0) {
+								buffer_i--;
+								set_cursor_position(get_cursor_position() - 2);
+								counter--;
+							}
+						}
+						break;
+					}
+					case ENTER: {
+						print_newline();
+						break;
+					}
+					default: break;
+				}
+			}
+		} else {
+			// continuous key holding
+			if(prev_keycode == cached_prev_keycode && hold_iterations >= CONT_HOLD_ITERATIONS) {
+				prev_keycode = 0;
+				continue;
+			}
+
+			// initial key holding confirmation delay
+			if(hold_iterations >= INIT_HOLD_ITERATIONS) {
+				cached_prev_keycode = prev_keycode;
+				prev_keycode = 0;
+			} else hold_iterations++;
+		}
+	} 
 }

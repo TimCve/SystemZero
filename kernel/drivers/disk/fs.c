@@ -313,13 +313,27 @@ void file_list() {
 
 				char chr = 0;
 				int chr_i = 0;
+
+				char name[512];
+
 				do {
 					chr = data_block_read_bytes[chr_i];
-					print_char(chr);
+					name[chr_i] = chr;
 					chr_i++;
 				} while(chr);
 
-				print("  ["); print_dec(file_size); print(" bytes]");
+				file_read(name, data_block_read_bytes, 1, 0);
+
+				if(data_block_read_bytes[0] == 0x7F && data_block_read_bytes[1] == 0x45 && data_block_read_bytes[2] == 0x4C && data_block_read_bytes[3] == 0x46) {
+					print("[x] ");
+				} else {
+					print("[-] ");
+				}
+
+				print(" ["); print_dec(file_size); print(" bytes]  ");
+
+				print(name);
+
 				print_newline();
 				inode_i += 16;
 			} else {
@@ -419,6 +433,12 @@ void file_write(uint8_t* name, uint8_t* data) {
 // (read_size & read_offset are in 512 byte sectors)
 int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint32_t read_offset) {
 	inode_t file_info = get_file_info(name);
+
+	if(file_info.valid != 1)  {
+		print("File doesn't exist!"); print_newline();
+		return 2;
+	}
+
 	uint32_t ptr_block_read[128];
 	uint32_t data_block_read[128];
 	uint8_t data_block_read_bytes[512];
@@ -472,7 +492,7 @@ int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint3
 		return ret_value;
 	} else {
 		print("File doesn't exist!"); print_newline();	
-		return 0;
+		return 2;
 	}
 }
 

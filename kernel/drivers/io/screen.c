@@ -62,7 +62,8 @@ void print(char* string) {
 	int pos = 0;
 
 	while(string[pos] != 0x00) {
-		print_char(string[pos]);
+		if(string[pos] == 0xA) print_newline();
+		else print_char(string[pos]);
 		pos++;
 	}
 }

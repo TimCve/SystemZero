@@ -22,8 +22,12 @@ uint32_t malloc(uint32_t size, int align, uint32_t *phys_addr) {
     return ret;
 } 
 
-void move_free_ptr_back(uint32_t amount) {
-    free_mem_addr -= amount;
+uint32_t get_free_ptr() {
+    return free_mem_addr;
+}
+
+void set_free_ptr(uint32_t value) {
+    free_mem_addr = value;
 }
 
 void *memcpy(void *dst, const void *src, uint32_t cnt) {

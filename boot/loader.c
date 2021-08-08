@@ -43,7 +43,7 @@ void loadkernel() {
 
     print_newline();
 
-    void (*func)(void) = page + kernelFile[6]; // create pointer to kmain
-    func(); // execute kmain
+    void (*func)(uint32_t free_mem_addr) = page + kernelFile[6]; // create pointer to kmain
+    func(get_free_ptr()); // execute kmain
 
 }

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+make clean raw ESFS_raw_write
+
+for file in external_programs/*.c; do
+	./compile_program "$file" "${file%.*}.elf"
+done
+
+for elf in external_programs/*.elf; do 
+	b=$(basename $elf) 
+	./ESFS_raw_write os-image.bin "${b%.*}" "$elf"
+done
+
+printf "Write any more files? [y/n] "
+
+while : ; do
+	read ans
+	
+	if [ "$ans" == "y" ]; then
+		printf "Input file names separated by a space: "
+		read -a files
+
+		for file in "${files[@]}"; do
+			b=$(basename $file)
+			./ESFS_raw_write os-image.bin "$b" "$file"
+		done
+
+		break	
+	elif [ "$ans" == "n" ]; then
+		break
+	else
+		printf "Unrecognized option, please type [y/n] "
+	fi
+done
+
+make convert_vmdk

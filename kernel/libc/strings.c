@@ -61,3 +61,21 @@ char* splice(char* string, int index, char delim) {
 int strlen(char* string) {
 	return sizeof(string) / sizeof(char);
 }
+
+int atoi(char* txt)
+{   
+    int sum, digit, i;
+    sum = 0;
+    i = 0;
+    char cur_char;
+    cur_char = 0;
+
+    do {
+    	cur_char = txt[i + 1];
+        digit = txt[i] - 0x30;
+        sum = (sum * 10) + digit;
+        i++;
+    } while(cur_char != 0);
+
+    return sum;
+}

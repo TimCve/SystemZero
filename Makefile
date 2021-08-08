@@ -76,3 +76,4 @@ clean:
 	-rm -rf build/
 	-rm *.bin *.vmdk
 	-rm ESFS_raw_write
+	-rm external_programs/*.elf
