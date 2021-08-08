@@ -93,6 +93,8 @@ void kmain(uint32_t free_mem_addr)
 					// allocate memory for program
 					uint32_t program_memory = malloc(50000, 1, &phy_addr);
 
+					// print("program memory: "); print_dec(program_memory); print_newline();
+
 					// read program into memory
 					int file_size = get_file_info(splice(kbd_buffer, 0, 0x20)).size;
 					file_read(splice(kbd_buffer, 0, 0x20), program_memory, file_size / 512, 0);

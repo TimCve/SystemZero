@@ -18,4 +18,5 @@
 #define U_ARROW 0x48
 #define D_ARROW 0x50
 
+char get_input_keycode();
 void kbd_readline();

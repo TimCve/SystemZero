@@ -253,7 +253,7 @@ void file_create(char* name) {
 
 		read_sectors_ATA_PIO(bread, superblock_block + i, 1);
 
-		while(j <= 128) {
+		while(j < 128) {
 			if(bread[j] == 0) {
 				inode.valid = 1;
 				inode.size = name_size + 1;
