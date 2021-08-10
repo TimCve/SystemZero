@@ -38,7 +38,7 @@ void kmain(uint32_t free_mem_addr)
 
 	print("This operating system is licensed under the GPLv3.");
 	print_newline();
-	print("All source code can be cloned from: https://github.com/TimCve/OSDev.git");
+	print("All source code can be cloned from: https://github.com/z3r0flag/OSDev.git");
 	print_newline(); print_newline();
 	print("You are now working from the built in kernel shell.");
 	print_newline();
