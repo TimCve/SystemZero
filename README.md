@@ -1,6 +1,11 @@
 # OSDev
 A basic operating system project built entirely from scratch.
 
+### Dependencies for building
+
+`virtualbox, gcc, nasm, make`
+*ld version must be <= 2.34*
+
 ### Makefile rules
 
 - `make all` - builds the operating system disk image (10MB) in raw binary mode only
