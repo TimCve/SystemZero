@@ -30,6 +30,12 @@ void print_buffer(char* buffer, int offset) {
 	}
 }
 
+void reprint(uint32_t* file, int read_offset) {
+	clear();
+	print_buffer(file, read_offset);
+	print("[ESC] exit [PGUP/PGDN] scroll");
+}
+
 void main(uint32_t free_mem_addr, char* input_buffer) {
 	uint32_t phy_addr;
 	set_free_ptr(free_mem_addr);
@@ -45,9 +51,8 @@ void main(uint32_t free_mem_addr, char* input_buffer) {
 	uint32_t* file = file_memory;
 	int read_offset = 0;
 
-	clear();
-	print_buffer(file, read_offset);
-	print("[ESC] exit [PGUP/PGDN] scroll");
+	// do an initial print of the buffer
+	reprint(file, read_offset);
 
 	uint8_t keycode;
 	uint8_t prev_keycode;
@@ -62,16 +67,12 @@ void main(uint32_t free_mem_addr, char* input_buffer) {
 			switch(keycode) {
 				case 0x49: { // pgup
 					if(read_offset > 0) read_offset -= 80;
-					clear();
-					print_buffer(file, read_offset);
-					print("[ESC] exit [PGUP/PGDN] scroll");
+					reprint(file, read_offset);
 					break;
 				}
 				case 0x51: { // pgdn
-					read_offset += 80;
-					clear();
-					print_buffer(file, read_offset);
-					print("[ESC] exit [PGUP/PGDN] scroll");
+					if(read_offset <= file_size) read_offset += 80;
+					reprint(file, read_offset);
 					break;
 				}
 				default: break;
@@ -79,7 +80,7 @@ void main(uint32_t free_mem_addr, char* input_buffer) {
 		}
 	}
 
-	clear();
+	print_newline();
 
 	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
 	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free
