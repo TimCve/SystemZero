@@ -31,9 +31,9 @@ The kernel shell provides an `exec` command which is used to execute a binary ex
 
 - Writing your program to the OS virtual disk can be done in the same way as writing a standard text file, the procedure is described in the "How to copy files from host machine to OS virtual hard disk" section.
 
-THANK YOU FOR CHOOSING TO TRY OUT MY OPERATING SYSTEM, IT HAS BEEN ONE OF MY MOST AMBITIOUS AND EXTREMELY FUN PROJECTS YET.
+### Automake script
 
-HAPPY HACKING!!!
+The automake script is easy to use, it will build the operating system as well as all *.c files in external_programs/ and write the executable binaries to the operating system's virtual drive, an option will be provided to write any additional files to the disk before conversion to VMDK format.
 
 
 
