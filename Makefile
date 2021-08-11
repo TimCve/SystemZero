@@ -63,7 +63,7 @@ os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/k
 
 os-image.vmdk: 
 	VBoxManage convertfromraw os-image.bin os-image.vmdk --format VMDK
-	VBoxManage internalcommands sethduuid /home/tim/Dev/OSDev/os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
+	VBoxManage internalcommands sethduuid os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
 
 # prepare directory structure for build process
 prep:
