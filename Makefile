@@ -1,5 +1,5 @@
-CC_FLAGS = -g -m32 -ffreestanding -nostartfiles -nostdlib -fno-stack-protector
-LD_FLAGS = -m elf_i386 -nostdlib
+CC_FLAGS = -Wl,--allow-multiple-definition -g -m32 -ffreestanding -nostartfiles -nostdlib -fno-stack-protector
+LD_FLAGS = --allow-multiple-definition -m elf_i386 -nostdlib
 
 CC := gcc ${CC_FLAGS}
 LD := ./ld_patch/ld-new ${LD_FLAGS} 
