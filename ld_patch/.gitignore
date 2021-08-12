@@ -1,7 +1,7 @@
 /configdoc.texi
 /deffilep.c
 /deffilep.h
-/ld-new
+ld-new
 /ld.1
 /ldemul-list.h
 /ldgram.c
