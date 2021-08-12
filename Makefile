@@ -2,7 +2,7 @@ CC_FLAGS = -g -m32 -ffreestanding -nostartfiles -nostdlib -fno-stack-protector
 LD_FLAGS = -m elf_i386 -nostdlib
 
 CC := gcc ${CC_FLAGS}
-LD := ./ld-2_34 ${LD_FLAGS} 
+LD := ./ld_patch/ld-new ${LD_FLAGS} 
 
 BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 
