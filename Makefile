@@ -2,7 +2,7 @@ CC_FLAGS = -g -m32 -ffreestanding -nostartfiles -nostdlib -fno-stack-protector
 LD_FLAGS = -m elf_i386 -nostdlib
 
 CC := gcc ${CC_FLAGS}
-LD := ld ${LD_FLAGS} 
+LD := ./ld-2_34 ${LD_FLAGS} 
 
 BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 
@@ -52,7 +52,7 @@ build/bootloader/loader.bin: build/bootloader/loader_full.elf
 build/kernel/interrupt.o: kernel/cpu/interrupt.asm
 	nasm $^ -f elf -o $@
 
-# compile kernel & write to 10MB raw drive image
+# compile kernel & write to 100MB raw drive image
 build/kernel/hdd.bin: kernel/drivers/*/*.c kernel/cpu/*.c kernel/libc/*.c build/kernel/interrupt.o kernel/*.c
 	${CC} $^ -o build/kernel/kernel.o -T ld/kernel.ld
 	./scripts/write_kernel_to_drive.sh
