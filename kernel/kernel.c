@@ -22,15 +22,29 @@ void kmain(uint32_t free_mem_addr)
 	print("Kernel successfully initialized!"); print_newline();
 	set_free_ptr(free_mem_addr);
 
-	print("Installing interrupt service routines..."); print_newline();
+	print("Installing interrupt service routines...");
 	isr_install();
 	__asm__("sti");
+	print(" [DONE]"); print_newline();
 
 	if(check_disk_fs() == 0) {
 		format_disk();
 	}
 
+	print("Initialising timer...");
 	init_timer(1000);
+	print(" [DONE]"); print_newline();
+
+	print("Starting TTY calibration sequence...");
+	int tick_start = get_tick();
+	int index = 0;
+	while(index < 20000) {
+		print_char(' ');
+		set_cursor_position(get_cursor_position() - 2);
+		index++;
+	}
+	int tty_calibration = get_tick() - tick_start;	
+	print(" [TICKS: "); print_dec(tty_calibration); print("]"); print_newline();
 
 	print_newline();
 
@@ -52,7 +66,7 @@ void kmain(uint32_t free_mem_addr)
 		for(int i = 0; i < 2000; i++) {
 			kbd_buffer[i] = 0x0;
 		}		
-		kbd_readline(kbd_buffer);
+		kbd_readline(kbd_buffer, tty_calibration);
 
 		if(splice(kbd_buffer, 0, 0x20)) {
 			uint8_t exe_check_buffer[512];

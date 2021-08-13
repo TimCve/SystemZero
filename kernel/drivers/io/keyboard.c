@@ -54,31 +54,18 @@ char get_input_keycode() {
     return keycode;
 }
 
-int translate_special_key(unsigned char keycode) {
-	switch(keycode) {
-		case BACKSPACE:
-			return BACKSPACE;
-		case R_ARROW:
-			return R_ARROW;
-		case L_ARROW:
-			return L_ARROW;
-		case U_ARROW:
-			return U_ARROW;
-		case D_ARROW:
-			return D_ARROW;
-		case ENTER:
-			return ENTER;
-		case TAB:
-			return TAB;
-		default:
-			return 1;
+int INIT_HOLD_ITERATIONS;
+int CONT_HOLD_ITERATIONS;
+
+void kbd_readline(char* buffer, int tty_calibration) {
+	if(tty_calibration >= 75) {
+		INIT_HOLD_ITERATIONS = 300000;
+		CONT_HOLD_ITERATIONS = 70000;
+	} else {
+		INIT_HOLD_ITERATIONS = 1200000;
+		CONT_HOLD_ITERATIONS = 350000;
 	}
-}
-
-#define INIT_HOLD_ITERATIONS 300000
-#define CONT_HOLD_ITERATIONS 70000
-
-void kbd_readline(char* buffer) {
+	
 	uint8_t keycode;
 	uint8_t prev_keycode = ENTER; // so enter key doesn't instantly get spammed upon command execution
 	uint8_t cached_prev_keycode;
@@ -142,7 +129,7 @@ void kbd_readline(char* buffer) {
 					buffer_i++;
 				}
 			} else { // character is not printable
-				ascii_code = translate_special_key(keycode);
+				ascii_code = keycode;
 
 				// special character handlers
 				switch(ascii_code) {
