@@ -1,0 +1,5 @@
+build/
+*.bin
+*.vmdk
+ESFS_raw_write
+external_programs/*.elf

@@ -2,7 +2,7 @@ CC_FLAGS = -Wl,--allow-multiple-definition -g -m32 -ffreestanding -nostartfiles 
 LD_FLAGS = --allow-multiple-definition -m elf_i386 -nostdlib
 
 CC := gcc ${CC_FLAGS}
-LD := ./ld_patch/ld-new ${LD_FLAGS} 
+LD := ld ${LD_FLAGS} 
 
 BOOTLOADER_DRIVERS = kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c
 

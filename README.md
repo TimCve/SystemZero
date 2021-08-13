@@ -1,5 +1,20 @@
-# OSDev
+# SystemZero
 A basic operating system project built entirely from scratch.
+
+## IMPORTANT NOTICE FOR BUILDING FROM SOURCE
+If your system's LD version is greater than 2.34 (check by running `ld --version`), the build process will fail because of a regression bug in LD. I have created a repository containing GNU binutils version 2.34 at https://github.com/z3r0flag/binutils-2_34.git 
+
+To build binutils 2.34:
+- `cd <binutils repository root dir>`
+- `./configure`
+- `make`
+
+To use LD 2.34 in build process for SystemZero:
+- `mkdir <SystemZero repository root dir>/ld_patch`
+- `cp <binutils repository root dir>/ld/* <SystemZero repository root dir>/ld_patch/`
+- Edit `Makefile` in SystemZero root and set `LD := ./ld_patch/ld-new ${LD_FLAGS}`
+
+DONE! Run `./automake` and test it out.
 
 ### Dependencies for building
 
