@@ -23,8 +23,8 @@ DONE! Run `./automake` and test it out.
 
 ### Makefile rules
 
-- `make all` - builds the operating system disk image (10MB) in raw binary mode only
-- `make raw` - (same as make all) builds the operating system disk image (10MB) in raw binary mode only
+- `make all` - builds the operating system disk image (100MB) in raw binary mode only
+- `make raw` - (same as make all) builds the operating system disk image (100MB) in raw binary mode only
 - `make convert_vmdk` - converts the raw binary OS image into vmdk mode, leaving the raw binary image
 - `make clean` - clean up build files and executables
 - `make run` - runs the system in QEMU (no compilation/building is done)
