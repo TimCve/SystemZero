@@ -8,6 +8,7 @@
 #include "libc/strings.h"
 #include "drivers/disk/fs.h"
 #include "drivers/utils/mem.h"
+#include "vga_colors.h"
 
 void sleep(int time) {
 	int init_tick = get_tick();
@@ -50,9 +51,18 @@ void kmain(uint32_t free_mem_addr)
 
 	char kbd_buffer[2000];
 
+	set_term_color(0x1e);
+	print(" _____         _             _____             "); print_newline();
+	print("|   __|_ _ ___| |_ ___ _____|__   |___ ___ ___ "); print_newline();
+	print("|__   | | |_ -|  _| -_|     |   __| -_|  _| . |"); print_newline();
+	print("|_____|_  |___|_| |___|_|_|_|_____|___|_| |___|"); print_newline();
+	print("      |___|                                    "); print_newline();
+	set_term_color(STD_COLOR);
+
+	print_newline();
 	print("This operating system is licensed under the GPLv3.");
 	print_newline();
-	print("All source code can be cloned from: https://github.com/z3r0flag/OSDev.git");
+	print("All source code can be cloned from: https://github.com/z3r0flag/SystemZero.git");
 	print_newline(); print_newline();
 	print("You are now working from the built in kernel shell.");
 	print_newline();
