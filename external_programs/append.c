@@ -3,6 +3,8 @@
 #include <stdint.h>
 
 void main(uint32_t free_mem_addr, char* input_buffer) {
+	set_superblock();
+
 	static char filename[512];
 	static char data[2000];
 

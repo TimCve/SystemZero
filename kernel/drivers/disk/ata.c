@@ -68,3 +68,8 @@ static void ATA_wait_DRQ()
 {
 	while(!(port_byte_in(0x1F7)&STATUS_RDY));
 }
+
+uint8_t ATA_get_ERROR()
+{
+	return port_byte_in(0x1F1);
+}

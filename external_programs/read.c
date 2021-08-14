@@ -5,6 +5,8 @@
 #include "../kernel/libc/strings.h"
 
 void main(uint32_t free_mem_addr, char* input_buffer) {
+	set_superblock();
+	
 	static uint8_t read_target[512];
 
 	if(atoi(splice(input_buffer, 2, 0x20)) >= 0) {

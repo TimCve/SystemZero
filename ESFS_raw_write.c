@@ -20,11 +20,19 @@ typedef struct {
 static char disk_name[512];
 static const int block_size = 512;
 int superblock_block = 150;
-superblock_t superblock = { 0xf0f03410, 20000, 2000, 16000 };
+superblock_t superblock = { 0xf0f03410, 0, 0, 0 };
 inode_t inode;
 
 void read_sector(uint32_t* target_address, uint32_t LBA);
 void write_sector(uint32_t LBA, uint32_t* bytes);
+
+void init_fs(int disk_size) {
+	disk_size -= (superblock_block * 512);
+	
+	superblock.blocks = disk_size / 512;
+	superblock.inode_blocks = (disk_size / 512) / 10;
+	superblock.inodes = ((disk_size / 512) / 10) * 8;
+}
 
 void format_disk() {
 	printf("Formatting disk with ESFS...\n");
@@ -444,9 +452,6 @@ int main(int argc, char **argv) {
 	strncpy(ESFS_file, argv[2], strlen(argv[2]));
 	strncpy(local_file, argv[3], strlen(argv[3]));
 
-	if(check_disk_fs() != 1) format_disk();
-	if(get_file_info(ESFS_file).valid != 1) file_create(ESFS_file);
-
 	FILE *file;
 	file = fopen(local_file, "rb");
 
@@ -458,6 +463,18 @@ int main(int argc, char **argv) {
 
 	fread(buffer, file_size, 1, file);
 	fclose(file);
+
+	FILE *disk;
+	disk = fopen(disk_name, "rb");
+	fseek(disk, 0L, SEEK_END);
+	int disk_size = ftell(disk);
+	fseek(disk, 0L, SEEK_SET);
+	fclose(disk);
+
+	init_fs(disk_size);
+
+	if(check_disk_fs() != 1) format_disk();
+	if(get_file_info(ESFS_file).valid != 1) file_create(ESFS_file);
 
 	file_write(ESFS_file, buffer, file_size);
 	return 0;

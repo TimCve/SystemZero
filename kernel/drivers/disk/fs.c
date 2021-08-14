@@ -4,9 +4,27 @@
 #include "../utils/mem.h"
 #include "../../libc/strings.h"
 
-superblock_t superblock = { 0xf0f03410, 20000, 2000, 16000 };
+superblock_t superblock = { 0xf0f03410, 0, 0, 0 };
 inode_t inode;
 int superblock_block = 150;
+
+void init_fs(int disk_size) {
+	disk_size -= (superblock_block * 512);
+
+	superblock.blocks = disk_size / 512;
+	superblock.inode_blocks = (disk_size / 512) / 10;
+	superblock.inodes = ((disk_size / 512) / 10) * 8;
+}
+
+void set_superblock() {
+	uint32_t superblock_contents[128];
+	read_sectors_ATA_PIO(superblock_contents, superblock_block, 1);
+
+	superblock.magic = superblock_contents[0];
+	superblock.blocks = superblock_contents[1];
+	superblock.inode_blocks = superblock_contents[2];
+	superblock.inodes = superblock_contents[3];
+}
 
 void format_disk() {
 	print("Formatting disk with ESFS..."); print_newline();
@@ -42,6 +60,7 @@ void format_disk() {
 	}
 
 	print_dec(superblock.inodes); print(" inodes written to "); print_dec(superblock.inode_blocks); print(" blocks!"); print_newline();
+	print_dec((superblock.blocks - superblock.inode_blocks) * 512); print(" bytes avaliable for file creation!"); print_newline(); 
 }
 
 int check_disk_fs() {

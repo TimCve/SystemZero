@@ -15,6 +15,8 @@ typedef struct {
 	uint32_t indirect_pointers[14];
 } inode_t;
 
+void init_fs(int disk_size);
+void set_superblock();
 void format_disk();
 int check_disk_fs();
 void file_create(char* name);

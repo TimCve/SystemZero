@@ -28,6 +28,25 @@ void kmain(uint32_t free_mem_addr)
 	__asm__("sti");
 	print(" [DONE]"); print_newline();
 
+	print("Determining size of system drive...");	
+
+	uint8_t ATA_err;
+	uint8_t read_target[512];
+	int lba = 0;
+	int bytes = 0;
+
+	while(!ATA_err) {
+		read_sectors_ATA_PIO(read_target, lba, 1);
+		ATA_err = ATA_get_ERROR();
+		lba += 10;
+		bytes += 5120;
+	}
+
+	print(" ["); print_dec(bytes); print(" bytes]");
+	print_newline();
+
+	init_fs(bytes);
+
 	if(check_disk_fs() == 0) {
 		format_disk();
 	}
@@ -58,8 +77,8 @@ void kmain(uint32_t free_mem_addr)
 	print("|_____|_  |___|_| |___|_|_|_|_____|___|_| |___|"); print_newline();
 	print("      |___|                                    "); print_newline();
 	set_term_color(STD_COLOR);
-
 	print_newline();
+
 	print("This operating system is licensed under the GPLv3.");
 	print_newline();
 	print("All source code can be cloned from: https://github.com/z3r0flag/SystemZero.git");
@@ -68,7 +87,7 @@ void kmain(uint32_t free_mem_addr)
 	print_newline();
 	print("Type \"list\" to list all files on disk, files marked with \'x\' are executable.");
 	print_newline();
-	
+
 	uint32_t phy_addr;
 
 	while(1) {
