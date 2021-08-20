@@ -1,5 +1,6 @@
 build/
 ld_patch/
+virtual_disks/
 
 *.bin
 *.vmdk

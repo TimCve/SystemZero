@@ -112,10 +112,8 @@ char exception_messages[][30] = {
 };
 
 void isr_handler(registers_t r) {
-    set_term_color(ERR_COLOR);
     print("Received interrupt: 0x"); print_hex(r.int_no); print_newline();
     print(exception_messages[r.int_no]); 
-    set_term_color(STD_COLOR);
     print_newline();
     return;
 }

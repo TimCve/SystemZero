@@ -18,4 +18,3 @@
 */
 
 #define STD_COLOR 0x1f
-#define ERR_COLOR 0x14

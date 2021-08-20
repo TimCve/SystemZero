@@ -1,6 +1,7 @@
 #include "screen.h"
 #include "../../vga_colors.h"
 #include "../utils/ports.h"
+#include "../../env_vars.h"
 
 void set_cursor_position(int offset);
 int get_cursor_position();
@@ -8,7 +9,7 @@ int get_cursor_position();
 void print(char* string);
 void print_newline();
 
-uint8_t term_color = STD_COLOR;
+uint8_t term_color; 
 
 void set_term_color(uint8_t color) {
 	term_color = color;

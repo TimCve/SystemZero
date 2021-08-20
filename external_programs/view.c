@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/io/keyboard.h"
 #include "../kernel/drivers/disk/fs.h"
@@ -36,9 +37,13 @@ void reprint(uint32_t* file, int read_offset) {
 	print("[ESC] exit [PGUP/PGDN] scroll");
 }
 
-void main(uint32_t free_mem_addr, char* input_buffer) {
+void main(env_vars_t* env_vars_ptr , char* input_buffer) {
+	select_drive(env_vars_ptr->selected_drive);
+	set_superblock();
+	set_term_color(env_vars_ptr->term_color);
+
 	uint32_t phy_addr;
-	set_free_ptr(free_mem_addr);
+	set_free_ptr(env_vars_ptr->free_mem_ptr);
 
 	// allocate memory for file buffer
 	uint32_t file_memory = malloc(229376, 1, &phy_addr);
