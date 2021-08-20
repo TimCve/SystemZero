@@ -43,7 +43,7 @@ You will now be able to either boot the .bin image in QEMU or the .vmdk image in
 
 ### Writing and compiling an executable to run on the OS
 
-The kernel shell provides an `exec` command which is used to execute a binary executable which is stored as a file on the virtual disk. (I would recommend putting program code into the external_programs directory)
+The kernel shell is an interface for executing binaries stored as files on the virtual hard disk. (For a C program to be automatically built and written onto the virtual disk by the Automake script, put the .c source file in external_programs)
 
 - Write the program in C, you will be able to include any kernel API that is available. View the header files inside the kernel directory to see the options.
 
@@ -53,7 +53,7 @@ The kernel shell provides an `exec` command which is used to execute a binary ex
 
 ### Automake script
 
-The automake script is easy to use, it will build the operating system as well as all *.c files in external_programs/ and write the executable binaries to the operating system's virtual drive, an option will be provided to write any additional files to the disk before conversion to VMDK format.
+The automake script is easy to use, it will build the operating system as well as all .c files in external_programs/ and write the executable binaries to the operating system's virtual drive, an option will be provided to write any additional files to the disk before conversion to VMDK format.
 
 
 
