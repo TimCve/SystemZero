@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 make clean raw ESFS_raw_write
 

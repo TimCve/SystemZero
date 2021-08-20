@@ -1,0 +1,12 @@
+#!/bin/sh
+
+mkdir virtual_disks
+rm virtual_disks/*.bin virtual_disks/*.vmdk
+
+for i in 1 2 3
+do
+	dd if=/dev/zero of="virtual_disks/drive_$i.bin" bs=1024 count=102400
+	VBoxManage convertfromraw "virtual_disks/drive_$i.bin" "virtual_disks/drive_$i.vmdk" --format VMDK
+	VBoxManage internalcommands sethduuid "virtual_disks/drive_$i.vmdk"
+done
+
