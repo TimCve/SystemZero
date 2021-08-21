@@ -34,9 +34,11 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	filename[buffer_i - 1] = 0;
 
 	buffer_i = 0;
+	int write_size = 0;
 	do {
 		chr = input_buffer[input_i];
 		data[buffer_i] = chr;
+		write_size++;
 		input_i++;
 		buffer_i++;				
 	} while(chr || input_i >= 2000);
@@ -46,5 +48,5 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 		data[buffer_i - 1] = 0xA;
 	}
 	
-	file_write(filename, data);
+	file_write(filename, data, write_size);
 }

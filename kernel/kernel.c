@@ -111,9 +111,11 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 	while(1) {
 		select_drive(env_vars_ptr->selected_drive);
-		set_term_color(env_vars_ptr->term_color);
 
+		set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x0e);
 		print("IDE"); print_dec(env_vars_ptr->selected_drive); print("> ");
+		set_term_color(env_vars_ptr->term_color);
+		
 		for(int i = 0; i < 2000; i++) {
 			kbd_buffer[i] = 0x0;
 		}		

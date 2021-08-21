@@ -366,12 +366,13 @@ void file_list() {
 }
 
 // write an arbitrary amount of data to an existing file
-void file_write(uint8_t* name, uint8_t* data) {
+void file_write(uint8_t* name, uint8_t* data, int write_size) {
 	inode_t file_info = get_file_info(name);
 	uint32_t ptr_block_read[128];
 	uint32_t data_block_read[128];
 	uint8_t data_block_read_bytes[512];
-	int write_size = 0;
+	int block_write_size = 0;
+	int total_write_size = 0;
 
 	if(file_info.valid != 1) {
 		print("File doesn't exist!"); print_newline();
@@ -403,20 +404,29 @@ void file_write(uint8_t* name, uint8_t* data) {
 						if(ptr_i == 0 && ptr_block_i == 0) name_end = 0;
 						if(ptr_i != 0 || ptr_block_i != 0) name_end = 1;
 
+						block_write_size = 0;
+
 						// iterate through the bytes of the data block
 						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
 							// if the name has already been passed, write data to any null byte
 							if(data_block_read_bytes[data_block_i] == 0 && name_end == 1) {
-								if(*data) {
+								if(write_size > 0) {
 									data_block_read_bytes[data_block_i] = *data;
 									*data++;
-									write_size++;
+									block_write_size++;
+									total_write_size++;
+									write_size--;
 								}
 							}
 							// if name has not been passed and there is a null byte, ignore it and set name_end = 1
 							// that way the next null byte will have data written to it
 							if(data_block_read_bytes[data_block_i] == 0 && name_end == 0) name_end = 1;
 						}
+							
+						// update the file size in the inode
+						file_info.size += block_write_size;
+						set_file_info(name, file_info);
+
 						// write the data that we stored in memory back to the disk
 						write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, data_block_read_bytes);
 
@@ -428,24 +438,23 @@ void file_write(uint8_t* name, uint8_t* data) {
 						}
 						
 						// if there is no more data to be written, break from the loop
-						if(!*data) break;	
+						if(write_size <= 0) break;
 					}
 				} else {
 					ptr_block_read[ptr_block_i] = allocate_data_block();
 					write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 					ptr_block_i--;
-					continue;
 				}
 			}
 		}
 		// if there is no more data to be written, break from the loop
-		if(!*data) break;
+		if(write_size <= 0) break;
 	}
 	
 	// update the file size in the inode
 	file_info.size += write_size;
 	set_file_info(name, file_info);
-	print("Wrote "); print_dec(write_size); print(" bytes to "); print(name); print_newline();
+	print("Wrote "); print_dec(total_write_size); print(" bytes to "); print(name); print_newline();
 }
 
 // reads a specified amount of a file's contents, starting at a specified offset to a specified location in memory
