@@ -1,12 +1,14 @@
-#!/bin/sh
+#!/bin/bash
 
 mkdir virtual_disks
 rm virtual_disks/*.bin virtual_disks/*.vmdk
+
+vmdk_uuids=("9a84b665-8971-4f5f-895c-bb10428e98b8" "31128ed9-5c5c-496f-9c2f-5f2c40d8248f" "dc6af26e-0eed-464f-ad24-d9e562fe5d3b")
 
 for i in 1 2 3
 do
 	dd if=/dev/zero of="virtual_disks/drive_$i.bin" bs=1024 count=102400
 	VBoxManage convertfromraw "virtual_disks/drive_$i.bin" "virtual_disks/drive_$i.vmdk" --format VMDK
-	VBoxManage internalcommands sethduuid "virtual_disks/drive_$i.vmdk"
+	VBoxManage internalcommands sethduuid "virtual_disks/drive_$i.vmdk" ${vmdk_uuids[($i-1)]}
 done
 

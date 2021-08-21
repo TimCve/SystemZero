@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 loader_file_size=$(wc -c <build/bootloader/loader.bin)
 let loader_sectors=($loader_file_size+513)/512
