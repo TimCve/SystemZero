@@ -29,6 +29,7 @@ void select_drive(uint8_t drive) {
 			slavebit = 1;
 			io_base = 0x1F0;
 			ctrl_base = 0x3F6;
+			break;
 		}
 		case 2: {
 			slavebit = 0;
