@@ -33,6 +33,22 @@ void loadkernel() {
     print("[LOADER] Physical address: 0x"); print_hex(phy_addr); print_newline();
 
     print("[LOADER] Loading kernel into memory at 0x"); print_hex(page); print_newline();
+	
+	// determine which drive is the boot drive
+	for(int drive_num = 0; drive_num < 4; drive_num++) {
+		uint16_t drive_read[256];
+		select_drive(drive_num);
+		read_sectors_ATA_PIO(drive_read, 0, 1);
+		if(drive_read[255] == 0xAA55) {
+			print("[LOADER] Loading kernel from drive "); print_dec(drive_num); print_newline();
+			env_vars_ptr->selected_drive = drive_num;
+			break;
+		} else if(drive_read[255] != 0xAA55 && drive_num == 3) {
+			set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x04);
+			print("[LOADER] ERROR! Kernel not found on any existing drive!"); print_newline();
+			while(1) continue;
+		}
+	}
 
     read_sectors_ATA_PIO(page, 14, 50);
 

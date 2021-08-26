@@ -99,6 +99,11 @@ void print_newline() {
 	scroll_terminal();
 }
 
+char char_under_cursor() {
+	char* video_memory = (char*) VIDEO_ADDRESS;
+	return video_memory[get_cursor_position()];
+}
+
 int get_cursor_position() {
 	port_byte_out(REG_SCREEN_CTRL, 14);
 	int position = port_byte_in(REG_SCREEN_DATA) << 8;

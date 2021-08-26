@@ -82,6 +82,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 	}
 	int tty_calibration = get_tick() - tick_start;	
 	print(" [TICKS: "); print_dec(tty_calibration); print("]"); print_newline();
+	env_vars_ptr->tty_calibration = tty_calibration;
 
 	print_newline();
 
@@ -119,7 +120,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 		for(int i = 0; i < 2000; i++) {
 			kbd_buffer[i] = 0x0;
 		}		
-		kbd_readline(kbd_buffer, tty_calibration);	
+		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration);	
 			
 		if(splice(kbd_buffer, 0, 0x20)) {
 			select_drive(system_drive);

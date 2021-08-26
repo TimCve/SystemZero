@@ -14,6 +14,7 @@ void print(char* str);
 void print_dec(int num);
 void print_hex(int num);
 void print_newline();
+char char_under_cursor();
 void print_char(char ch);
 int get_cursor_position();
 void set_cursor_position(int offset);

@@ -59,7 +59,9 @@ char* splice(char* string, int index, char delim) {
 }
 
 int strlen(char* string) {
-	return sizeof(string) / sizeof(char);
+	int pos = 0;
+	while(string[pos] != 0)	pos++;
+	return pos;
 }
 
 int atoi(char* txt)
