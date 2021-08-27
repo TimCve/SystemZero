@@ -57,7 +57,7 @@ char get_input_keycode() {
 int INIT_HOLD_ITERATIONS;
 int CONT_HOLD_ITERATIONS;
 
-void kbd_readline(char* buffer, int tty_calibration) {
+void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes) {
 	if(tty_calibration >= 75) {
 		INIT_HOLD_ITERATIONS = 300000;
 		CONT_HOLD_ITERATIONS = 70000;
@@ -66,10 +66,10 @@ void kbd_readline(char* buffer, int tty_calibration) {
 		CONT_HOLD_ITERATIONS = 350000;
 	}
 	
-	uint8_t keycode;
+	uint8_t keycode = 0;
 	uint8_t prev_keycode = ENTER; // so enter key doesn't instantly get spammed upon command execution
-	uint8_t cached_prev_keycode;
-	uint8_t ascii_code;
+	uint8_t cached_prev_keycode = 0;
+	uint8_t ascii_code = 0;
 
 	int shift_pressed = 0;
 	int hold_iterations = 0;
@@ -97,7 +97,7 @@ void kbd_readline(char* buffer, int tty_calibration) {
 			// attempt translation of recieved keycode to printable character
 			ascii_code = get_printable_char(keycode, 0, shift_pressed);
 
-			if(ascii_code) { // character is printable
+			if(ascii_code && buffer_i < buffer_bytes) { // character is printable
 				if(!buffer[buffer_i]) { // insert character at end of text
 					buffer[buffer_i] = ascii_code;
 					print_char(buffer[buffer_i]);

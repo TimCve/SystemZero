@@ -1,5 +1,5 @@
 #!/bin/bash
-make raw ESFS_raw_write
+make clean raw ESFS_raw_write
 
 for file in external_programs/*.c; do
 	./compile_program "$file" "${file%.*}.elf"

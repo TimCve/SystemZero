@@ -5,6 +5,9 @@
 #define KEYBOARD_PORT 0x60
 
 // special keys
+#define ESC 0x1
+#define PGUP 0x49
+#define PGDN 0x51
 #define BACKSPACE 0xE
 #define TAB	0xF
 #define ENTER 0x1C
