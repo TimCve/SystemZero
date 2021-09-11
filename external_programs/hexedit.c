@@ -16,6 +16,7 @@ void hex_pad_zeroes(uint32_t num, uint32_t maxnum) {
 }
 
 void reprint_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t selected_byte, uint32_t read_offset) {
+	set_term_color(env_vars_ptr->term_color);
 	clear();
 	print("SYSTEMZERO STANDARD HEX EDITOR"); print_newline();
 
@@ -35,6 +36,7 @@ void reprint_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t selected
 		print_newline();
 	}
 
+	set_term_color(env_vars_ptr->term_color);
 	for(int i = 0; i < 6; i++) print_char(205);
 	print_char(202);
 	for(int i = 0; i < 73; i++) print_char(205);
@@ -71,6 +73,13 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	uint8_t prev_keycode;
 	int status;
 	static char byte_input[100];
+	uint32_t keypress_limit;
+
+	if(env_vars_ptr->tty_calibration >= 75) {
+		keypress_limit = 100000;
+	} else {
+		keypress_limit = 500000;
+	}
 
 	while(1) {
 		memcpy(byte_buffer, file + read_offset, sizeof(byte_buffer));
@@ -86,7 +95,7 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 			
 			if(keycode == prev_keycode) keypress_counter++;
 
-			if(keypress_counter >= 500000) {
+			if(keypress_counter >= keypress_limit) {
 				keypress_counter = 0;
 				switch(keycode) {
 					case PGUP: {

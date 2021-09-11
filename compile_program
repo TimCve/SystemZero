@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 
 if [ -z "$1" ] || [ -z "$2" ]
 then
-	echo "Usage: ./compile_program <input_file.c> <output_file>"
+	echo "Usage: $0 <input_file.c> <output_file>"
 else
 	make all
 	gcc -g -m32 -Wl,--allow-multiple-definition -ffreestanding -nostartfiles -nostdlib -fno-stack-protector kernel/drivers/*/*.c kernel/cpu/*.c kernel/libc/*.c build/kernel/interrupt.o kernel/*.c $1 -o $2 -T ld/program.ld
