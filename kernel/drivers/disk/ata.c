@@ -20,7 +20,7 @@ uint8_t slavebit;
 void select_drive(uint8_t drive) {
 	switch(drive) {
 		case 0: {
-			slavebit = 0;
+					slavebit = 0;
 			io_base = 0x1F0;
 			ctrl_base = 0x3F6;
 			break;

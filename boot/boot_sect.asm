@@ -29,7 +29,7 @@ load_kernel:
 	call print_string
 
 	mov bx, KERNEL_OFFSET	; load to address KERNEL_OFFSET (0x1000)
-	mov dh, 13	; load up 13 sectors after the boot sector
+	mov dh, 17	; load up 17 sectors after the boot sector
 	mov dl, [BOOT_DRIVE]
 	call disk_load
 

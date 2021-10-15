@@ -6,13 +6,24 @@
 void set_cursor_position(int offset);
 int get_cursor_position();
 
-void print(char* string);
-void print_newline();
+int print(char* string);
+int print_newline();
+
+int scrolling_enabled = 1;
 
 uint8_t term_color; 
 
 void set_term_color(uint8_t color) {
 	term_color = color;
+}
+
+uint8_t get_term_color() {
+	return term_color;
+}
+
+void set_scrolling(int value) {
+	if(value <= 0) scrolling_enabled = 0;
+	else if(value > 0) scrolling_enabled = 1;
 }
 
 // clears screen & sets cursor position to screen start
@@ -27,7 +38,7 @@ void clear() {
 	set_cursor_position(0x00);
 }
 
-void scroll_terminal() {
+int scroll_terminal() {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
 
@@ -42,11 +53,12 @@ void scroll_terminal() {
 		}
 
 		set_cursor_position(COLS * (ROWS - 1) * 2);
-	}
+		return 1;
+	} else return 0;
 }
 
 // print single character at cursor position
-void print_char(char ch) {
+int print_char(char ch) {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
 	
@@ -55,18 +67,23 @@ void print_char(char ch) {
 	cursor_pos += 2;
 	
 	set_cursor_position(cursor_pos);
-	scroll_terminal();
+	
+	if(scrolling_enabled == 1) return scroll_terminal();
+	else return 0;
 }
 
 // prints ASCII string
-void print(char* string) {
+int print(char* string) {
 	int pos = 0;
-
+	int scroll_lines = 0;
+	
 	while(string[pos] != 0x00) {
-		if(string[pos] == 0xA) print_newline();
-		else print_char(string[pos]);
+		if(string[pos] == 0xA) scroll_lines += print_newline();
+		else scroll_lines += print_char(string[pos]);
 		pos++;
 	}
+
+	return scroll_lines;
 }
 
 // recursive function to print decimal integer
@@ -87,7 +104,7 @@ void print_hex(int num) {
 }
 
 // new line & carriage return
-void print_newline() {
+int print_newline() {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	
 	set_cursor_position(get_cursor_position() + (COLS * 2));
@@ -96,7 +113,9 @@ void print_newline() {
 
 	for(index = 0; index <= get_cursor_position(); index += (COLS * 2));
 		set_cursor_position(get_cursor_position() - ((COLS * 2) - (index - get_cursor_position())));
-	scroll_terminal();
+
+	if(scrolling_enabled == 1) return scroll_terminal();
+	else return 0;
 }
 
 char char_under_cursor() {

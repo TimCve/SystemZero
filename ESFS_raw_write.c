@@ -19,7 +19,7 @@ typedef struct {
 
 static char disk_name[512];
 static const int block_size = 512;
-int superblock_block = 150;
+int superblock_block = 200;
 superblock_t superblock = { 0xf0f03410, 0, 0, 0 };
 inode_t inode;
 
@@ -28,7 +28,8 @@ void write_sector(uint32_t LBA, uint32_t* bytes);
 
 void init_fs(int disk_size) {
 	disk_size -= (superblock_block * 512);
-	
+	disk_size = 104770560;	
+
 	superblock.blocks = disk_size / 512;
 	superblock.inode_blocks = (disk_size / 512) / 10;
 	superblock.inodes = ((disk_size / 512) / 10) * 8;

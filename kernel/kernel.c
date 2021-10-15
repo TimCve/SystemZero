@@ -8,8 +8,7 @@
 #include "drivers/disk/ata.h"
 #include "libc/strings.h"
 #include "drivers/disk/fs.h"
-#include "drivers/utils/mem.h"
-#include "vga_colors.h"
+#include "drivers/utils/mem.h" #include "vga_colors.h"
 
 void sleep(int time) {
 	int init_tick = get_tick();
@@ -116,11 +115,10 @@ void kmain(env_vars_t* env_vars_ptr) {
 		set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x0e);
 		print("IDE"); print_dec(env_vars_ptr->selected_drive); print("> ");
 		set_term_color(env_vars_ptr->term_color);
-		
-		for(int i = 0; i < 2000; i++) {
-			kbd_buffer[i] = 0x0;
-		}		
-		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000);	
+
+		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
+
+		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000, 0);
 			
 		if(splice(kbd_buffer, 0, 0x20)) {
 			select_drive(system_drive);

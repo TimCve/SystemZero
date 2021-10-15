@@ -50,7 +50,7 @@ void loadkernel() {
 		}
 	}
 
-    read_sectors_ATA_PIO(page, 14, 50);
+    read_sectors_ATA_PIO(page, 18, 60);
 
     uint32_t* kernelFile = page;
 

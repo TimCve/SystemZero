@@ -22,4 +22,5 @@
 #define D_ARROW 0x50
 
 char get_input_keycode();
-void kbd_readline();
+void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffer_i);
+int screen_scan(char* char_buffer);

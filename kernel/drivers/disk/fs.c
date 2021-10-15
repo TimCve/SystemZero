@@ -6,10 +6,11 @@
 
 superblock_t superblock = { 0xf0f03410, 0, 0, 0 };
 inode_t inode;
-int superblock_block = 150;
+int superblock_block = 200;
 
 void init_fs(int disk_size) {
 	disk_size -= (superblock_block * 512);
+	disk_size = 104770560;
 
 	superblock.blocks = disk_size / 512;
 	superblock.inode_blocks = (disk_size / 512) / 10;
