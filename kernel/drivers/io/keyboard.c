@@ -88,8 +88,9 @@ int screen_scan(char* char_buffer) {
 		else if(under_cursor == 0 && get_cursor_position() >= init_cursor)
 			char_buffer[i] = 0;
 
-		if(char_buffer[i]) print_char(char_buffer[i]);
+		set_cursor_position(get_cursor_position() + 2);
 	}
+	
 	set_scrolling(1);
 
 	set_cursor_position(init_cursor);
@@ -125,7 +126,7 @@ int to_next_char(char* buffer, int buffer_i) {
 }
 
 void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffer_i) {
-	if(tty_calibration >= 75) {
+	if(tty_calibration <= 75) {
 		INIT_HOLD_ITERATIONS = 300000;
 		CONT_HOLD_ITERATIONS = 70000;
 	} else {
@@ -170,11 +171,22 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 			if(ascii_code && buffer_i < buffer_bytes) { // character is printable
 				if(!buffer[buffer_i]) { // insert character at end of text
 					buffer[buffer_i] = ascii_code;
+
 					if(print_char(buffer[buffer_i]) == 1 && enable_screen_scanning == 1) {
 						scroll_buffer(buffer);
 						buffer_i -= 80;
 						screen_scan(buffer);
 					}
+					
+					if(enable_screen_scanning == 1) {
+						int init_cursor = get_cursor_position();
+						clear();
+						set_scrolling(0);
+						print(buffer);
+						set_scrolling(1);
+						set_cursor_position(init_cursor);
+					}
+
 					buffer_i++;
 				} else { // insert character between existing text
 					int counter = 0;
@@ -194,13 +206,22 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 						if(print_char(buffer[buffer_i]) == 1 && enable_screen_scanning == 1) {
 							scroll_buffer(buffer);
 							buffer_i -= 80;
-							screen_scan(buffer);
+							screen_scan(buffer);	
 						}
-
+						
 						set_cursor_position(get_cursor_position() - 2);
 						counter--;
 						buffer_i--;
 						set_cursor_position(get_cursor_position() - 2);
+						
+						if(enable_screen_scanning == 1) {
+							int init_cursor = get_cursor_position();
+							clear();
+							set_scrolling(0);
+							print(buffer);
+							set_scrolling(1);
+							set_cursor_position(init_cursor);
+						}
 					}
 
 					// insert desired character

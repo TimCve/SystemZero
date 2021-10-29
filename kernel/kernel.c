@@ -8,7 +8,7 @@
 #include "drivers/disk/ata.h"
 #include "libc/strings.h"
 #include "drivers/disk/fs.h"
-#include "drivers/utils/mem.h" #include "vga_colors.h"
+#include "drivers/utils/mem.h"
 
 void sleep(int time) {
 	int init_tick = get_tick();

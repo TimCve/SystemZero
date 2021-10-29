@@ -176,12 +176,12 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 	}
 }
 
-int allocate_data_block() {
+int allocate_data_block(int start_block) {
 	int free_block = 0;
 	uint32_t data_block_read[128];
 
 	// iterate through all possible data blocks
-	for(int block_i = (superblock_block) + superblock.inode_blocks; block_i <= superblock.blocks; block_i++) {
+	for(int block_i = /*superblock_block + superblock.inode_blocks*/ start_block; block_i <= superblock.blocks; block_i++) {
 		// read the contents of every block into memory
 		read_sectors_ATA_PIO(data_block_read, block_i, 1);
 		
@@ -280,7 +280,7 @@ void file_create(char* name) {
 
 				memcpy(bwrite, &bread, sizeof(bread));
 
-				uint32_t free_block = allocate_data_block();
+				uint32_t free_block = allocate_data_block(superblock_block + superblock.inode_blocks);
 
 				inode.indirect_pointers[0] = free_block;
 				memcpy(bwrite + (j * 4), &inode, sizeof(inode));
@@ -290,7 +290,7 @@ void file_create(char* name) {
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 				for(int v = 0; v < 512; v++) bwrite[v] = 0;
 
-				uint32_t free_block_2 = allocate_data_block();
+				uint32_t free_block_2 = allocate_data_block(superblock_block + superblock.inode_blocks);
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 
 				memcpy(bwrite, &free_block_2, sizeof(free_block_2));
@@ -374,6 +374,8 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 	uint8_t data_block_read_bytes[512];
 	int block_write_size = 0;
 	int total_write_size = 0;
+	
+	int last_allocated_block = superblock_block + superblock.inode_blocks;
 
 	if(file_info.valid != 1) {
 		print("File doesn't exist!"); print_newline();
@@ -395,7 +397,8 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 					if(data_block_read_bytes[511]) { // data block is full
 						if(ptr_block_read[ptr_block_i + 1]) continue;
 						else { // if no more data blocks exist, create one
-							ptr_block_read[ptr_block_i + 1] = allocate_data_block();
+							last_allocated_block = allocate_data_block(last_allocated_block);
+							ptr_block_read[ptr_block_i + 1] = allocate_data_block(last_allocated_block);
 							write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 							continue;
 						} 
@@ -433,7 +436,8 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 
 						// if this is the last pointer in the pointer block and it is full, create a new pointer block
 						if(data_block_read_bytes[511] && ptr_block_i == 127) {
-							file_info.indirect_pointers[ptr_i] = allocate_data_block();
+							last_allocated_block = allocate_data_block(last_allocated_block);
+							file_info.indirect_pointers[ptr_i] = allocate_data_block(last_allocated_block);
 							// write those changes to the inode to the disk
 							set_file_info(name, file_info);
 						}
@@ -442,7 +446,8 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 						if(write_size <= 0) break;
 					}
 				} else {
-					ptr_block_read[ptr_block_i] = allocate_data_block();
+					last_allocated_block = allocate_data_block(last_allocated_block);
+					ptr_block_read[ptr_block_i] = allocate_data_block(last_allocated_block);
 					write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 					ptr_block_i--;
 				}

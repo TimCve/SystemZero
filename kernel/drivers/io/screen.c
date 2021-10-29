@@ -61,13 +61,12 @@ int scroll_terminal() {
 int print_char(char ch) {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
-	
+
 	video_memory[cursor_pos] = ch;
 	video_memory[cursor_pos + 1] = term_color;
 	cursor_pos += 2;
-	
 	set_cursor_position(cursor_pos);
-	
+
 	if(scrolling_enabled == 1) return scroll_terminal();
 	else return 0;
 }
