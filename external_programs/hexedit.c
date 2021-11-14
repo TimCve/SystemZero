@@ -154,7 +154,7 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 					case 0x17: { // i key
 						while(get_input_keycode() == 0x17) continue;	
 						int counter = file_size;
-						while(counter >= (read_offset + selected_byte)) {
+						while(counter > (read_offset + selected_byte)) {
 							file[counter + 1] = file[counter];
 							counter--;	
 						}

@@ -102,7 +102,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 	print_newline();
 	print("All source code can be cloned from: https://github.com/z3r0flag/SystemZero.git");
 	print_newline(); print_newline();
-	print("You are now working from the built in kernel shell.");
+	print("You are now working from the built-in kernel shell.");
 	print_newline();
 	print("Type \"list\" to list all files on disk, files marked with \'x\' are executable.");
 	print_newline(); print_newline();
@@ -118,7 +118,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
 
-		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000, 0);
+		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000);
 			
 		if(splice(kbd_buffer, 0, 0x20)) {
 			select_drive(system_drive);
@@ -130,7 +130,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 					// allocate memory for program
 					uint32_t program_memory = malloc(50000, 1, &phy_addr);
 
-					// print("program memory: "); print_dec(program_memory); print_newline();
+					// print("program memory: "); print_hex(program_memory); print_newline();
 
 					// read program into memory
 					int file_size = get_file_info(splice(kbd_buffer, 0, 0x20)).size;

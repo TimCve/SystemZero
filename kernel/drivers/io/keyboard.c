@@ -1,31 +1,6 @@
 #include "keyboard.h"
 #include <stdint.h>
 
-typedef struct {
-	char keycode;
-	char chr;
-} kbd_keycode;
-
-static kbd_keycode std_keycode_table[] = {
-	{0x29, '`'}, {0x2, '1'}, {0x3, '2'}, {0x4, '3'}, {0x5, '4'}, {0x6, '5'}, {0x7, '6'}, {0x8, '7'}, {0x9, '8'}, {0xA, '9'}, {0xB, '0'}, {0xC, '-'}, {0xD, '='},
-	{0x10, 'q'}, {0x11, 'w'}, {0x12, 'e'}, {0x13, 'r'}, {0x14, 't'}, {0x15, 'y'}, {0x16, 'u'}, {0x17, 'i'}, {0x18, 'o'}, {0x19, 'p'}, {0x1A, '['}, {0x1B, ']'},
-	{0x1e, 'a'}, {0x1f, 's'}, {0x20, 'd'}, {0x21, 'f'}, {0x22, 'g'}, {0x23, 'h'}, {0x24, 'j'}, {0x25, 'k'}, {0x26, 'l'}, {0x27, ';'}, {0x28, '\''}, {0x2B, '#'},
-	{0x56, '\\'}, {0x2c, 'z'}, {0x2d, 'x'}, {0x2e, 'c'}, {0x2f, 'v'}, {0x30, 'b'}, {0x31, 'n'}, {0x32, 'm'}, {0x33, ','}, {0x34, '.'}, {0x35, '/'}, {0x39, ' '},
-	//{0xE, 0x8},
-	{0x0, 0x0}
-};
-
-static kbd_keycode shft_keycode_table[] = {
-	{0x29, '¬'}, {0x2, '!'}, {0x3, '"'}, {0x5, '$'}, {0x6, '%'}, {0x7, '^'}, {0x8, '&'}, {0x9, '*'}, {0xA, '('}, {0xB, ')'}, {0xC, '_'}, {0xD, '+'},
-	{0x10, 'Q'}, {0x11, 'W'}, {0x12, 'E'}, {0x13, 'R'}, {0x14, 'T'}, {0x15, 'Y'}, {0x16, 'U'}, {0x17, 'I'}, {0x18, 'O'}, {0x19, 'P'}, {0x1A, '{'}, {0x1B, '}'},
-	{0x1e, 'A'}, {0x1f, 'S'}, {0x20, 'D'}, {0x21, 'F'}, {0x22, 'G'}, {0x23, 'H'}, {0x24, 'J'}, {0x25, 'K'}, {0x26, 'L'}, {0x27, ':'}, {0x28, '@'}, {0x2B, '~'},
-	{0x56, '|'}, {0x2c, 'Z'}, {0x2d, 'X'}, {0x2e, 'C'}, {0x2f, 'V'}, {0x30, 'B'}, {0x31, 'N'}, {0x32, 'M'}, {0x33, '<'}, {0x34, '>'}, {0x35, '?'}, {0x39, ' '},
-	//{0xE, 0x8},
-	{0x0, 0x0}
-};
-
-int enable_screen_scanning = 0;
-
 char get_printable_char(char keycode, int i, uint8_t shift) {
 	if(shift == 0) {
 		if(keycode == std_keycode_table[i].keycode) {
@@ -59,74 +34,8 @@ char get_input_keycode() {
 int INIT_HOLD_ITERATIONS;
 int CONT_HOLD_ITERATIONS;
 
-int scroll_buffer(char* buffer) {
-	for(int i = COLS; i < (ROWS * COLS); i++) {
-		buffer[i - COLS] = buffer[i];
-	}
-
-	for(int i = (COLS * (ROWS - 1)); i < (ROWS * COLS); i++) {
-		buffer[i] = 0x20;
-	}
-}
-
-int screen_scan(char* char_buffer) {
-	int init_cursor = get_cursor_position();
-	enable_screen_scanning = 1;
-
-	// scan screen and fill char_buffer
-	char under_cursor;
-	set_cursor_position(0);
-
-	set_scrolling(0);
-	for(int i = 0; i < 2000; i++) {
-		under_cursor = char_under_cursor();
-
-		if(under_cursor)	
-			char_buffer[i] = under_cursor;
-		else if(under_cursor == 0 && get_cursor_position() < init_cursor)
-			char_buffer[i] = 0x20;
-		else if(under_cursor == 0 && get_cursor_position() >= init_cursor)
-			char_buffer[i] = 0;
-
-		set_cursor_position(get_cursor_position() + 2);
-	}
-	
-	set_scrolling(1);
-
-	set_cursor_position(init_cursor);
-	return init_cursor / 2;
-}
-
-int to_prev_char(char* buffer, int buffer_i) {
-	if(buffer[buffer_i - 1]) {
-		int ctr = 0;
-		do {	
-			set_cursor_position(get_cursor_position() - 2);
-			ctr++;
-		} while(!char_under_cursor());
-		
-		if(ctr > 1) set_cursor_position(get_cursor_position() + 2);
-	}
-	return buffer_i - 1;
-}
-
-int to_next_char(char* buffer, int buffer_i) {
-	if(buffer[buffer_i]) {
-		int return_pos = get_cursor_position() + 2;
-		int ctr = 0;
-		do {	
-			set_cursor_position(get_cursor_position() + 2);
-			if(get_cursor_position() > 4000) {
-				set_cursor_position(return_pos);	
-				break;
-			}
-		} while(!char_under_cursor());
-	}
-	return buffer_i + 1;
-}
-
-void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffer_i) {
-	if(tty_calibration <= 75) {
+void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes) {
+	if(tty_calibration >= 75) {
 		INIT_HOLD_ITERATIONS = 300000;
 		CONT_HOLD_ITERATIONS = 70000;
 	} else {
@@ -142,12 +51,9 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 	int shift_pressed = 0;
 	int hold_iterations = 0;
 
-	uint8_t terminator_key;
+	int buffer_i = 0;
 
-	if(enable_screen_scanning) terminator_key = ESC;
-	else terminator_key = ENTER;
-
-	while(ascii_code != terminator_key) {
+	while(ascii_code != ENTER) {
 		// get keycode from keyboard port
 		keycode = get_input_keycode();
 
@@ -171,28 +77,13 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 			if(ascii_code && buffer_i < buffer_bytes) { // character is printable
 				if(!buffer[buffer_i]) { // insert character at end of text
 					buffer[buffer_i] = ascii_code;
-
-					if(print_char(buffer[buffer_i]) == 1 && enable_screen_scanning == 1) {
-						scroll_buffer(buffer);
-						buffer_i -= 80;
-						screen_scan(buffer);
-					}
-					
-					if(enable_screen_scanning == 1) {
-						int init_cursor = get_cursor_position();
-						clear();
-						set_scrolling(0);
-						print(buffer);
-						set_scrolling(1);
-						set_cursor_position(init_cursor);
-					}
-
+					print_char(buffer[buffer_i]);
 					buffer_i++;
 				} else { // insert character between existing text
 					int counter = 0;
 
 					// seek to end of text
-					while(buffer[buffer_i] && buffer_i < buffer_bytes) {
+					while(buffer[buffer_i]) {
 						buffer_i++;
 						set_cursor_position(get_cursor_position() + 2);
 						counter++;
@@ -202,33 +93,17 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 					// also seek back to initial point
 					while(counter > 0) {
 						buffer[buffer_i] = buffer[buffer_i - 1];
-						
-						if(print_char(buffer[buffer_i]) == 1 && enable_screen_scanning == 1) {
-							scroll_buffer(buffer);
-							buffer_i -= 80;
-							screen_scan(buffer);	
-						}
-						
+						print_char(buffer[buffer_i]);
 						set_cursor_position(get_cursor_position() - 2);
 						counter--;
 						buffer_i--;
 						set_cursor_position(get_cursor_position() - 2);
-						
-						if(enable_screen_scanning == 1) {
-							int init_cursor = get_cursor_position();
-							clear();
-							set_scrolling(0);
-							print(buffer);
-							set_scrolling(1);
-							set_cursor_position(init_cursor);
-						}
 					}
 
 					// insert desired character
 					buffer[buffer_i] = ascii_code;
 					print_char(buffer[buffer_i]);
 					buffer_i++;
-					
 				}
 			} else { // character is not printable
 				ascii_code = keycode;
@@ -237,13 +112,15 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 				switch(ascii_code) {
 					case L_ARROW: {
 						if(buffer[buffer_i - 1]) {
-							buffer_i = to_prev_char(buffer, buffer_i);
+							buffer_i--;
+							set_cursor_position(get_cursor_position() - 2);
 						}
 						break;
 					}
 					case R_ARROW: {
 						if(buffer[buffer_i]) {
-							buffer_i = to_next_char(buffer, buffer_i);	
+							buffer_i++;
+							set_cursor_position(get_cursor_position() + 2);
 						}
 						break;
 					}
@@ -251,7 +128,8 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 						if(buffer[buffer_i - 1]) {
 							int counter = 0;
 
-							buffer_i = to_prev_char(buffer, buffer_i);
+							buffer_i--;
+							set_cursor_position(get_cursor_position() - 2);
 
 							// seek to end of text & shift characters left by 1 place
 							while(buffer[buffer_i]) {
@@ -267,21 +145,10 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 								set_cursor_position(get_cursor_position() - 2);
 								counter--;
 							}
-
-							if(enable_screen_scanning == 1) {
-								int init_cursor = get_cursor_position();
-								clear();
-								set_scrolling(0);
-								print(buffer);
-								set_scrolling(1);
-								set_cursor_position(init_cursor);
-							}
 						}
 						break;
 					}
 					case ENTER: {
-						if(enable_screen_scanning == 1) buffer[buffer_i] = 0xA;
-						buffer_i++;
 						print_newline();
 						break;
 					}
@@ -302,6 +169,4 @@ void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes, int buffe
 			} else hold_iterations++;
 		}
 	} 
-	enable_screen_scanning = 0;
 }
-

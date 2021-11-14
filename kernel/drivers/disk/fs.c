@@ -387,17 +387,21 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 		// if pointer exists, read pointer block into memory and iterate through it
 		if(file_info.indirect_pointers[ptr_i]) {
 			read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
+
 			for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) {
 				// if a pointer in the pointer block exists, read it into memory and check if it is full
 				// --> if full, continue onto next pointer
 				// --> if not full, write data to it until either data ends (break) or data block fills up (continue onto next pointer)
 				if(ptr_block_read[ptr_block_i]) {
 					read_sectors_ATA_PIO(data_block_read, ptr_block_read[ptr_block_i], 1);
+
 					memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
+
 					if(data_block_read_bytes[511]) { // data block is full
 						if(ptr_block_read[ptr_block_i + 1]) continue;
 						else { // if no more data blocks exist, create one
 							last_allocated_block = allocate_data_block(last_allocated_block);
+							print_dec(last_allocated_block); print_newline();
 							ptr_block_read[ptr_block_i + 1] = allocate_data_block(last_allocated_block);
 							write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 							continue;
@@ -420,7 +424,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 									block_write_size++;
 									total_write_size++;
 									write_size--;
-								}
+								} else break;
 							}
 							// if name has not been passed and there is a null byte, ignore it and set name_end = 1
 							// that way the next null byte will have data written to it

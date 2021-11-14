@@ -19,6 +19,7 @@ uint32_t malloc(uint32_t size, int align, uint32_t *phys_addr) {
 
     // increment free memory pointer
     free_mem_addr += size; 
+
     return ret;
 } 
 

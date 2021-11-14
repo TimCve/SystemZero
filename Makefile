@@ -17,7 +17,7 @@ ESFS_raw_write: ESFS_raw_write.c
 
 # run OS in QEMU
 run: 
-	qemu-system-i386 -drive format=raw,file=os-image.bin
+	qemu-system-i386 -display gtk,gl=on -drive format=raw,file=os-image.bin 
 
 # assemble boot sector
 build/bootloader/boot_sect.bin: boot/boot_sect.asm
@@ -62,8 +62,8 @@ os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/k
 	cat $^ > $@
 
 os-image.vmdk: 
-	VBoxManage convertfromraw os-image.bin os-image.vmdk --format VMDK
-	VBoxManage internalcommands sethduuid os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
+	-VBoxManage convertfromraw os-image.bin os-image.vmdk --format VMDK
+	-VBoxManage internalcommands sethduuid os-image.vmdk 6372c00a-a62e-4241-9a21-90fa4c22f019
 
 # prepare directory structure for build process
 prep:

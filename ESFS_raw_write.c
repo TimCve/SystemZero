@@ -356,6 +356,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 						else { // if no more data blocks exist, create one
 							last_allocated_block = allocate_data_block(last_allocated_block);
 							ptr_block_read[ptr_block_i + 1] = allocate_data_block(last_allocated_block);
+							write_sector(file_info.indirect_pointers[ptr_i], ptr_block_read);
 							continue;
 						} 
 					} else { // data block is not full
