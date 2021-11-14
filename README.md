@@ -57,5 +57,7 @@ The kernel shell is an interface for executing binaries stored as files on the v
 
 The automake script is easy to use, it will build the operating system as well as all .c files in external_programs/ and write the executable binaries to the operating system's virtual drive, an option will be provided to write any additional files to the disk before conversion to VMDK format.
 
+### Multiple drives
 
+There exist two scripts `create_create_virtual_disks` and `run_with_extra_disks`. (The latter is just a single long qemu command to virtualize SystemZero with 4 virtual IDE drives). The first script creates 3 virtual IDE drives (the first one is the boot drive). These can be "connected" to any of the 4 IDE busses and accessed within SystemZero.
 
