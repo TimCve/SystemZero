@@ -7,5 +7,9 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
 
-	file_create(splice(input_buffer, 1, 0x20));
+	if(!file_create(splice(input_buffer, 1, 0x20), env_vars_ptr)) {
+		print("File "); print(splice(input_buffer, 1, 0x20)); print(" successfully created!"); print_newline();
+	} else {
+		print("File already exists!"); print_newline();
+	}
 }

@@ -29,7 +29,7 @@ void main(env_vars_t* env_vars_ptr , char* input_buffer) {
 	select_drive(f2_drive);
 
 	// create new empty file with specified name
-	file_create(splice(f2, 1, ':'));
+	file_create(splice(f2, 1, ':'), env_vars_ptr);
 
 	select_drive(f1_drive);
 
@@ -51,7 +51,7 @@ void main(env_vars_t* env_vars_ptr , char* input_buffer) {
 	select_drive(f2_drive);
 	print("Copying data (will take a while for large files)... "); print_newline();
 	// write copy data into empty file
-	file_write(splice(f2, 1, ':'), file, write_size);
+	file_write(splice(f2, 1, ':'), file, write_size, env_vars_ptr);
 
 	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
 	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free

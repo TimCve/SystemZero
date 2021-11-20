@@ -21,6 +21,12 @@
 #define U_ARROW 0x48
 #define D_ARROW 0x50
 
+#define PRESS_THRESH_FAST 1100000
+#define HOLD_THRESH_FAST 160000
+
+#define PRESS_THRESH_SLOW 1200000
+#define HOLD_THRESH_SLOW 350000
+
 typedef struct {
 	char keycode;
 	char chr;

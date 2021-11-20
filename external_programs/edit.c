@@ -1,9 +1,9 @@
 #include <stdint.h>
+#include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/keyboard.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
 #include "../kernel/libc/strings.h"
-#include "../kernel/env_vars.h"
 #include "../kernel/drivers/utils/mem.h"
 
 uint32_t print_text_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t line_offset, uint32_t selected_char) {
@@ -22,7 +22,7 @@ uint32_t print_text_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t l
 		line_counter++;
 	}
 
-	clear(); // TEMPORARY
+	clear(); 
 
 	uint32_t actual_selected_char = char_index + selected_char;
 
@@ -71,16 +71,15 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	int file_size = get_file_info(splice(input_buffer, 1, 0x20)).size;
 	file_read(splice(input_buffer, 1, 0x20), file_memory, (file_size / 512) + 1, 0);
 
-
 	int INIT_HOLD_ITERATIONS;
 	int CONT_HOLD_ITERATIONS;
 	
 	if(env_vars_ptr->tty_calibration >= 75) {
-		INIT_HOLD_ITERATIONS = 300000;
-		CONT_HOLD_ITERATIONS = 70000;
+		INIT_HOLD_ITERATIONS = PRESS_THRESH_FAST;
+		CONT_HOLD_ITERATIONS = HOLD_THRESH_FAST;
 	} else {
-		INIT_HOLD_ITERATIONS = 1200000;
-		CONT_HOLD_ITERATIONS = 350000;
+		INIT_HOLD_ITERATIONS = PRESS_THRESH_SLOW;
+		CONT_HOLD_ITERATIONS = HOLD_THRESH_SLOW;
 	}
 	
 	uint8_t keycode = 0;
@@ -98,30 +97,15 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 		
 	actual_selected_char = print_text_buffer(env_vars_ptr, file, line_offset, selected_char);
 
-	/*
 	while(keycode != ESC) {
-		keycode = get_input_keycode();
-		print_hex(keycode);
-		print_newline();
-	}
-	*/
-
-	while(keycode != ESC) {
-
 		keycode = get_input_keycode();
 		
-		if(keycode == 0x2a) {
-			shift_pressed = 1;
-		} else if(keycode == 0xaa) {
-			shift_pressed = 0;
-		}
+		if(keycode == 0x2a) shift_pressed = 1;
+		else if(keycode == 0xaa) shift_pressed = 0;
 
-		if(keycode == 0x1d) {
-			ctrl_pressed = 1;
-		} else if(keycode == 0x9d) {
-			ctrl_pressed = 0;
-		}
-
+		if(keycode == 0x1d) ctrl_pressed = 1;
+		else if(keycode == 0x9d) ctrl_pressed = 0;
+		
 		if(keycode != prev_keycode) {	
 			// reset hold iterations
 			hold_iterations = 0;
@@ -135,6 +119,7 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 			// printable character
 			if(ascii_code) {
 				int status = 0;
+
 				if(ctrl_pressed) {
 					switch(ascii_code) {
 						case 'r': {
@@ -144,10 +129,17 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 							break;
 						}
 						case 's': {	
-							file_delete(splice(input_buffer, 1, 0x20));
-							file_create(splice(input_buffer, 1, 0x20));
-							print("Writing data (will take a while for large files)...");
-							file_write(splice(input_buffer, 1, 0x20), file, file_size);
+							SAVE:
+								print("Saving changes...");
+								file_delete(splice(input_buffer, 1, 0x20), env_vars_ptr);
+								file_create(splice(input_buffer, 1, 0x20), env_vars_ptr);
+								int wrote = file_write(splice(input_buffer, 1, 0x20), file, file_size, env_vars_ptr);
+								if(!wrote) {
+									actual_selected_char = print_text_buffer(env_vars_ptr, file, line_offset, selected_char);
+									goto SAVE;
+								}
+								print(" Wrote "); print_dec(wrote); print(" bytes!");
+
 							status = 1;
 							break;
 						}

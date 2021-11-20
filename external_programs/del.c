@@ -8,5 +8,9 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
 
-	file_delete(splice(input_buffer, 1, 0x20));
+	if(!file_delete(splice(input_buffer, 1, 0x20), env_vars_ptr), env_vars_ptr) {
+		print("File successfully deleted!"); print_newline();
+	} else {
+		print("File doesn't exist!"); print_newline();
+	}
 }

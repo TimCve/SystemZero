@@ -1,9 +1,9 @@
 #include <stdint.h>
+#include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/keyboard.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
 #include "../kernel/libc/strings.h"
-#include "../kernel/env_vars.h"
 #include "../kernel/drivers/utils/mem.h"
 
 void hex_pad_zeroes(uint32_t num, uint32_t maxnum) {
@@ -182,10 +182,11 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 						break;
 					}
 					case 0x11: { // w key
-						file_delete(splice(input_buffer, 1, 0x20));
-						file_create(splice(input_buffer, 1, 0x20));
-						print("Writing data (will take a while for large files)...");
-						file_write(splice(input_buffer, 1, 0x20), file, file_size);
+						print("Saving changes...");
+						file_delete(splice(input_buffer, 1, 0x20), env_vars_ptr);
+						file_create(splice(input_buffer, 1, 0x20), env_vars_ptr);
+						int wrote = file_write(splice(input_buffer, 1, 0x20), file, file_size, env_vars_ptr);
+						print(" Wrote "); print_dec(wrote); print(" bytes!");
 						status = 0;
 						break;
 					} 

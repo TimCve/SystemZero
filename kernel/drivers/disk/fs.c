@@ -1,3 +1,4 @@
+#include "../../env_vars.h"
 #include "fs.h"
 #include "../io/screen.h"
 #include "ata.h"
@@ -10,7 +11,7 @@ int superblock_block = 200;
 
 void init_fs(int disk_size) {
 	disk_size -= (superblock_block * 512);
-	disk_size = 104770560;
+	// disk_size = 104770560;
 
 	superblock.blocks = disk_size / 512;
 	superblock.inode_blocks = (disk_size / 512) / 10;
@@ -176,12 +177,12 @@ void set_file_info(uint8_t* name, inode_t file_info) {
 	}
 }
 
-int allocate_data_block(int start_block) {
+int allocate_data_block(env_vars_t* env_vars_ptr) {
 	int free_block = 0;
 	uint32_t data_block_read[128];
 
 	// iterate through all possible data blocks
-	for(int block_i = /*superblock_block + superblock.inode_blocks*/ start_block; block_i <= superblock.blocks; block_i++) {
+	for(int block_i = /*superblock_block + superblock.inode_blocks*/ env_vars_ptr->last_allocated_block; block_i <= superblock.blocks; block_i++) {
 		// read the contents of every block into memory
 		read_sectors_ATA_PIO(data_block_read, block_i, 1);
 		
@@ -239,18 +240,23 @@ int allocate_data_block(int start_block) {
 			}
 		}
 
-		if(free_block != 0) return free_block;
+		if(free_block != 0) {
+			env_vars_ptr->last_allocated_block = free_block;
+			return free_block;
+		}
 	}
 }
 
 
 // create a file
-void file_create(char* name) {
+int file_create(char* name, env_vars_t* env_vars_ptr) {
 	inode_t file_info = get_file_info(name);
 	if(file_info.valid == 1) {
-		print("File already exists!"); print_newline();
-		return;
+		return 1;
 	}
+	
+	if(!env_vars_ptr->last_allocated_block)
+		env_vars_ptr->last_allocated_block = superblock_block + superblock.inode_blocks;
 
 	uint32_t bread[128];
 	uint32_t dread[128];
@@ -280,7 +286,7 @@ void file_create(char* name) {
 
 				memcpy(bwrite, &bread, sizeof(bread));
 
-				uint32_t free_block = allocate_data_block(superblock_block + superblock.inode_blocks);
+				uint32_t free_block = allocate_data_block(env_vars_ptr);
 
 				inode.indirect_pointers[0] = free_block;
 				memcpy(bwrite + (j * 4), &inode, sizeof(inode));
@@ -290,7 +296,7 @@ void file_create(char* name) {
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 				for(int v = 0; v < 512; v++) bwrite[v] = 0;
 
-				uint32_t free_block_2 = allocate_data_block(superblock_block + superblock.inode_blocks);
+				uint32_t free_block_2 = allocate_data_block(env_vars_ptr);
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 
 				memcpy(bwrite, &free_block_2, sizeof(free_block_2));
@@ -298,8 +304,7 @@ void file_create(char* name) {
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 				write_sectors_ATA_PIO(free_block_2, 1, name);
 
-				print("File successfully created!"); print_newline();
-				return;
+				return 0;
 			}
 			j += 16;
 		}
@@ -309,7 +314,7 @@ void file_create(char* name) {
 	print("No free inodes available for file creation!"); print_newline();
 }
 
-// print the names of all existing files to stdout
+// print the names of all existing files 
 void file_list() {
 	uint32_t inode_block_read[128];
 	uint32_t data_block_read[128];
@@ -367,20 +372,20 @@ void file_list() {
 }
 
 // write an arbitrary amount of data to an existing file
-void file_write(uint8_t* name, uint8_t* data, int write_size) {
+int file_write(uint8_t* name, uint8_t* data, int write_size, env_vars_t* env_vars_ptr) {
 	inode_t file_info = get_file_info(name);
 	uint32_t ptr_block_read[128];
 	uint32_t data_block_read[128];
 	uint8_t data_block_read_bytes[512];
 	int block_write_size = 0;
 	int total_write_size = 0;
-	
-	int last_allocated_block = superblock_block + superblock.inode_blocks;
 
 	if(file_info.valid != 1) {
-		print("File doesn't exist!"); print_newline();
-		return;
+		return 0;
 	}
+	
+	if(!env_vars_ptr->last_allocated_block)
+		env_vars_ptr->last_allocated_block = superblock_block + superblock.inode_blocks;
 
 	// iterate through all the pointers in the inode
 	for(int ptr_i = 0; ptr_i < 14; ptr_i++)	{
@@ -400,9 +405,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 					if(data_block_read_bytes[511]) { // data block is full
 						if(ptr_block_read[ptr_block_i + 1]) continue;
 						else { // if no more data blocks exist, create one
-							last_allocated_block = allocate_data_block(last_allocated_block);
-							print_dec(last_allocated_block); print_newline();
-							ptr_block_read[ptr_block_i + 1] = allocate_data_block(last_allocated_block);
+							ptr_block_read[ptr_block_i + 1] = allocate_data_block(env_vars_ptr);
 							write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 							continue;
 						} 
@@ -440,8 +443,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 
 						// if this is the last pointer in the pointer block and it is full, create a new pointer block
 						if(data_block_read_bytes[511] && ptr_block_i == 127) {
-							last_allocated_block = allocate_data_block(last_allocated_block);
-							file_info.indirect_pointers[ptr_i] = allocate_data_block(last_allocated_block);
+							file_info.indirect_pointers[ptr_i] = allocate_data_block(env_vars_ptr);
 							// write those changes to the inode to the disk
 							set_file_info(name, file_info);
 						}
@@ -450,8 +452,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 						if(write_size <= 0) break;
 					}
 				} else {
-					last_allocated_block = allocate_data_block(last_allocated_block);
-					ptr_block_read[ptr_block_i] = allocate_data_block(last_allocated_block);
+					ptr_block_read[ptr_block_i] = allocate_data_block(env_vars_ptr);
 					write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
 					ptr_block_i--;
 				}
@@ -464,7 +465,7 @@ void file_write(uint8_t* name, uint8_t* data, int write_size) {
 	// update the file size in the inode
 	file_info.size += write_size;
 	set_file_info(name, file_info);
-	print("Wrote "); print_dec(total_write_size); print(" bytes to "); print(name); print_newline();
+	return total_write_size;
 }
 
 // reads a specified amount of a file's contents, starting at a specified offset to a specified location in memory
@@ -534,10 +535,12 @@ int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint3
 	}
 }
 
-void file_delete(uint8_t* name) {
+int file_delete(uint8_t* name, env_vars_t* env_vars_ptr) {
 	inode_t file_info = get_file_info(name);
 	static inode_t updated_file_info;
 	uint32_t ptr_block_read[128];
+
+	uint32_t smallest_block_index = 0;
 
 	// set up a static 512 array of null bytes
 	static uint8_t null_block[512];
@@ -560,11 +563,16 @@ void file_delete(uint8_t* name) {
 				
 				// delete all data from those data blocks
 				for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) 
-					if(ptr_block_read[ptr_block_i]) write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, null_block);
+ 					if(ptr_block_read[ptr_block_i]) {
+						if(!smallest_block_index || ptr_block_read[ptr_block_i] < smallest_block_index) 
+							smallest_block_index = ptr_block_read[ptr_block_i];	
+						write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, null_block);
+					}
 			}
 		}
-		print("File successfully deleted!"); print_newline();
+		env_vars_ptr->last_allocated_block = smallest_block_index;
+		return 0;	
 	} else {
-		print("File doesn't exist!"); print_newline();
+		return 1;	
 	}
 }
