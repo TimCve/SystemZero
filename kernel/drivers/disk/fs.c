@@ -5,17 +5,58 @@
 #include "../utils/mem.h"
 #include "../../libc/strings.h"
 
-superblock_t superblock = { 0xf0f03410, 0, 0, 0 };
+int allocate_data_block(env_vars_t* env_vars_ptr);
+
+superblock_t superblock = { 0xf0f03410, 0, 0, 0, 0, 0};
 inode_t inode;
 int superblock_block = 200;
 
-void init_fs(int disk_size) {
-	disk_size -= (superblock_block * 512);
-	// disk_size = 104770560;
+void save_superblock(env_vars_t* env_vars_ptr) {
+	uint32_t buffer[128];
+	superblock.last_allocated_block = env_vars_ptr->last_allocated_block;
+	
+	for(int i = 0; i < 128; i++) buffer[i] = 0;
+	memcpy(buffer, &superblock, sizeof(superblock));
+
+	write_sectors_ATA_PIO(superblock_block, 1, buffer);
+}
+
+void init_fs(env_vars_t* env_vars_ptr) {
+	uint8_t ATA_err;
+	uint32_t read_target[128];
+	uint32_t lba = 0;
+	uint32_t disk_size = 0;
+
+	read_sectors_ATA_PIO(read_target, superblock_block, 1);
+
+	if(read_target[0] == superblock.magic && read_target[4] != 0) {
+		disk_size = read_target[4];
+		env_vars_ptr->last_allocated_block = read_target[5];
+	} else if(read_target[4] == 0) {
+		print("Calculating system drive size..."); print_newline();
+		while(!ATA_err) {
+			read_sectors_ATA_PIO(read_target, lba, 1);
+			ATA_err = ATA_get_ERROR();
+			lba += 10;
+			disk_size += 5120;
+		}
+		
+		disk_size -= (superblock_block * 512);
+	}
 
 	superblock.blocks = disk_size / 512;
 	superblock.inode_blocks = (disk_size / 512) / 10;
 	superblock.inodes = ((disk_size / 512) / 10) * 8;
+	superblock.disk_size = disk_size;
+
+	if(env_vars_ptr->last_allocated_block == 0) {
+		print("Finding free data block..."); print_newline();
+		allocate_data_block(env_vars_ptr);
+	}
+
+	superblock.last_allocated_block = env_vars_ptr->last_allocated_block;
+	
+	save_superblock(env_vars_ptr);
 }
 
 void set_superblock() {
@@ -26,6 +67,8 @@ void set_superblock() {
 	superblock.blocks = superblock_contents[1];
 	superblock.inode_blocks = superblock_contents[2];
 	superblock.inodes = superblock_contents[3];
+	superblock.disk_size = superblock_contents[4];
+	superblock.last_allocated_block = superblock_contents[5];
 }
 
 void format_disk() {
@@ -304,6 +347,7 @@ int file_create(char* name, env_vars_t* env_vars_ptr) {
 				write_sectors_ATA_PIO(free_block, 1, bwrite);
 				write_sectors_ATA_PIO(free_block_2, 1, name);
 
+				save_superblock(env_vars_ptr);	
 				return 0;
 			}
 			j += 16;
@@ -465,6 +509,7 @@ int file_write(uint8_t* name, uint8_t* data, int write_size, env_vars_t* env_var
 	// update the file size in the inode
 	file_info.size += write_size;
 	set_file_info(name, file_info);
+	save_superblock(env_vars_ptr);	
 	return total_write_size;
 }
 
@@ -571,6 +616,7 @@ int file_delete(uint8_t* name, env_vars_t* env_vars_ptr) {
 			}
 		}
 		env_vars_ptr->last_allocated_block = smallest_block_index;
+		save_superblock(env_vars_ptr);
 		return 0;	
 	} else {
 		return 1;	

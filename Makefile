@@ -16,8 +16,15 @@ ESFS_raw_write: ESFS_raw_write.c
 	gcc $^ -o $@
 
 # run OS in QEMU
-run: 
+run_gtk:
 	qemu-system-i386 -display gtk,gl=on -drive format=raw,file=os-image.bin 
+
+run_sdl:
+	qemu-system-i386 -display sdl,gl=on -drive format=raw,file=os-image.bin 
+
+run:
+	$(info Running without graphics acceleration, try make run_sdl or make run_gtk)
+	qemu-system-i386 -drive format=raw,file=os-image.bin 
 
 # assemble boot sector
 build/bootloader/boot_sect.bin: boot/boot_sect.asm

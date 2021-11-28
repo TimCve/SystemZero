@@ -1,3 +1,14 @@
-#!/bin/sh
+#!/bin/bash
 
-qemu-system-i386 -display gtk,gl=on -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
+if [ "$1" == "gtk" ]
+then
+	echo "Running with gtk display and gl acceleration..."
+	qemu-system-i386 -display gtk,gl=on -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
+elif [ "$1" == "sdl" ]
+then
+	echo "Running with sdl display and gl acceleration..."
+	qemu-system-i386 -display sdl,gl=on -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
+else
+	echo "Running with no acceleration (Available options: sdl, gtk)"
+	qemu-system-i386 -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
+fi

@@ -57,12 +57,14 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	// allocate memory for file buffer
 	uint32_t file_memory = malloc(229376, 1, &phy_addr);
 
+	// create pointer to start of file buffer in memory
+	uint8_t* file = file_memory;
+	
+	for(int i = 0; i < 10000; i++) file[i] = 0;
+	
 	// read file contents into memory
 	int file_size = get_file_info(splice(input_buffer, 1, 0x20)).size;
 	file_read(splice(input_buffer, 1, 0x20), file_memory, (file_size / 512) + 1, 0);
-
-	// create pointer to start of file buffer in memory
-	uint8_t* file = file_memory;
 
 	uint32_t selected_byte = 0;
 	uint32_t read_offset = 0;

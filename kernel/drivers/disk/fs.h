@@ -6,6 +6,8 @@ typedef struct {
 	uint32_t blocks;
 	uint32_t inode_blocks;
 	uint32_t inodes;
+	uint32_t disk_size;
+	uint32_t last_allocated_block;
 } superblock_t;
 
 // inode structure (64 bytes)
@@ -15,7 +17,7 @@ typedef struct {
 	uint32_t indirect_pointers[14];
 } inode_t;
 
-void init_fs(int disk_size);
+void init_fs(env_vars_t* env_vars_ptr);
 void set_superblock();
 void format_disk();
 int check_disk_fs();

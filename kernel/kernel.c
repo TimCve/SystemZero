@@ -39,26 +39,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 	uint8_t system_drive = env_vars_ptr->selected_drive;
 
-	// determine size of system drive
-	print("Determining size of system drive...");	
-
-	uint8_t ATA_err;
-	uint8_t read_target[512];
-	int lba = 0;
-	int bytes = 0;
-
-	while(!ATA_err) {
-		read_sectors_ATA_PIO(read_target, lba, 1);
-		ATA_err = ATA_get_ERROR();
-		lba += 10;
-		bytes += 5120;
-	}
-
-	print(" ["); print_dec(bytes); print(" bytes]");
-	print_newline();
-
-	// intitialize superblock in memory for system drive 
-	init_fs(bytes);
+	// intitialize filesystem
+	init_fs(env_vars_ptr);
 
 	// format system drive if necessary
 	if(check_disk_fs() == 0) {
@@ -127,6 +109,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 			if(file_read(splice(kbd_buffer, 0, 0x20), exe_check_buffer, 1, 0) != 2) {
 				// check if the file is executable
 				if(exe_check_buffer[0] == 0x7F && exe_check_buffer[1] == 0x45 && exe_check_buffer[2] == 0x4C && exe_check_buffer[3] == 0x46) {
+					uint32_t initial_tick = get_tick();
+
 					// allocate memory for program
 					uint32_t program_memory = malloc(50000, 1, &phy_addr);
 
@@ -154,6 +138,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 					// reset the free memory pointer
 					set_free_ptr(get_free_ptr() - 54096);
 					env_vars_ptr->free_mem_ptr = get_free_ptr();
+
+					print("Program took "); print_dec(get_tick() - initial_tick); print(" ticks to run."); print_newline();
 				} else {
 					print("File is not executable!");
 					print_newline();
