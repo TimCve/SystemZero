@@ -187,7 +187,7 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 						print("Saving changes...");
 						file_delete(splice(input_buffer, 1, 0x20), env_vars_ptr);
 						file_create(splice(input_buffer, 1, 0x20), env_vars_ptr);
-						int wrote = file_write(splice(input_buffer, 1, 0x20), file, file_size, env_vars_ptr);
+						int wrote = file_write(splice(input_buffer, 1, 0x20), file, file_size - strlen(splice(input_buffer, 1, 0x20)), env_vars_ptr);
 						print(" Wrote "); print_dec(wrote); print(" bytes!");
 						status = 0;
 						break;
