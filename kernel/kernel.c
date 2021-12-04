@@ -1,5 +1,4 @@
 #include "kernel.h"
-#include "env_vars.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
 #include "drivers/io/keyboard.h"
@@ -14,6 +13,53 @@ void sleep(int time) {
 	int init_tick = get_tick();
 	while(get_tick() < init_tick + time) {
 		continue;
+	}
+}
+
+int execute(char* cmd, char* args_str, env_vars_t* env_vars_ptr) {
+	uint32_t phy_addr;	
+
+	select_drive(env_vars_ptr->system_drive);
+	uint8_t exe_check_buffer[512];
+	
+	if(file_read(cmd, exe_check_buffer, 1, 0) != 2) {
+		// check if the file is executable
+		if(exe_check_buffer[0] == 0x7F && exe_check_buffer[1] == 0x45 && exe_check_buffer[2] == 0x4C && exe_check_buffer[3] == 0x46) {
+			// allocate memory for program
+			uint32_t program_memory = malloc(50000, 1, &phy_addr);
+
+			// print("program memory: "); print_hex(program_memory); print_newline();
+
+			// read program into memory
+			int file_size = get_file_info(cmd).size;
+			file_read(cmd, program_memory, file_size / 512, 0);
+
+			// create a pointer to the program
+			uint32_t* program = program_memory;
+			
+			// create pointer to the program's main function (entry point)
+			int (*func)(env_vars_t* env_vars_ptr, char* input_buffer) = program_memory + program[6];
+		
+			// set free memory pointer environment variable
+			env_vars_ptr->free_mem_ptr = get_free_ptr();
+			
+			// execute program main function
+			int return_status = func(env_vars_ptr, args_str);
+
+			// clear out memory after program has finished execution
+			for(int i = 0; i < 50000; i++) program[i] = 0;
+
+			// reset the free memory pointer
+			set_free_ptr(get_free_ptr() - 54096);
+			env_vars_ptr->free_mem_ptr = get_free_ptr();
+
+			return return_status;
+		} else {
+			print("File is not executable!");
+			print_newline();
+
+			return 2;
+		}
 	}
 }
 
@@ -37,7 +83,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 	// select initial drive (master)
 	select_drive(env_vars_ptr->selected_drive);
 
-	uint8_t system_drive = env_vars_ptr->selected_drive;
+	env_vars_ptr->system_drive = env_vars_ptr->selected_drive;
 
 	// intitialize filesystem
 	init_fs(env_vars_ptr);
@@ -89,8 +135,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 	print("Type \"list\" to list all files on disk, files marked with \'x\' are executable.");
 	print_newline(); print_newline();
 
-	uint32_t phy_addr;	
-
+	// kernel shell
 	while(1) {
 		select_drive(env_vars_ptr->selected_drive);
 
@@ -101,50 +146,9 @@ void kmain(env_vars_t* env_vars_ptr) {
 		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
 
 		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000);
-			
-		if(splice(kbd_buffer, 0, 0x20)) {
-			select_drive(system_drive);
-			uint8_t exe_check_buffer[512];
-			
-			if(file_read(splice(kbd_buffer, 0, 0x20), exe_check_buffer, 1, 0) != 2) {
-				// check if the file is executable
-				if(exe_check_buffer[0] == 0x7F && exe_check_buffer[1] == 0x45 && exe_check_buffer[2] == 0x4C && exe_check_buffer[3] == 0x46) {
-					uint32_t initial_tick = get_tick();
 
-					// allocate memory for program
-					uint32_t program_memory = malloc(50000, 1, &phy_addr);
-
-					// print("program memory: "); print_hex(program_memory); print_newline();
-
-					// read program into memory
-					int file_size = get_file_info(splice(kbd_buffer, 0, 0x20)).size;
-					file_read(splice(kbd_buffer, 0, 0x20), program_memory, file_size / 512, 0);
-
-					// create a pointer to the program
-					uint32_t* program = program_memory;
-					
-					// create pointer to the program's main function (entry point)
-					void (*func)(env_vars_t* env_vars_ptr, char* input_buffer) = program_memory + program[6];
-				
-					// set free memory pointer environment variable
-					env_vars_ptr->free_mem_ptr = get_free_ptr();
-
-					// execute program main function
-					func(env_vars_ptr, &kbd_buffer);
-
-					// clear out memory after program has finished execution
-					for(int i = 0; i < 50000; i++) program[i] = 0;
-
-					// reset the free memory pointer
-					set_free_ptr(get_free_ptr() - 54096);
-					env_vars_ptr->free_mem_ptr = get_free_ptr();
-
-					print("Program took "); print_dec(get_tick() - initial_tick); print(" ticks to run."); print_newline();
-				} else {
-					print("File is not executable!");
-					print_newline();
-				}
-			}
-		}
+		uint32_t initial_tick = get_tick();
+		print_dec(execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr)); 
+		print(" ["); print_dec(get_tick() - initial_tick); print(" ticks]"); print_newline();
 	}	
 }

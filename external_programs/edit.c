@@ -51,7 +51,7 @@ uint32_t print_text_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t l
 	return actual_selected_char;
 }
 
-void main(env_vars_t* env_vars_ptr, char* input_buffer) {
+int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	select_drive(env_vars_ptr->selected_drive);
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
@@ -249,4 +249,6 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
 	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free
 	set_free_ptr(get_free_ptr() - 233472); // deallocate
+
+	return 0;
 }

@@ -50,7 +50,18 @@ void loadkernel() {
 		}
 	}
 
-    read_sectors_ATA_PIO(page, 18, 60);
+	uint32_t kernel_exec_test[128];
+	int kernel_start_block = 0;
+
+	while(1) {
+		read_sectors_ATA_PIO(kernel_exec_test, kernel_start_block, 1);
+		if(kernel_exec_test[0] == 0x464C457F) break;
+		kernel_start_block++;
+	}
+
+	print("Kernel starts at block: "); print_dec(kernel_start_block); print_newline();
+	
+    read_sectors_ATA_PIO(page, kernel_start_block, 60);
 
     uint32_t* kernelFile = page;
 

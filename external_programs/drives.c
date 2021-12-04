@@ -19,7 +19,7 @@ void translate_status(uint8_t status) {
 	print_newline();
 }
 
-void main(env_vars_t* env_vars_ptr, char* input_buffer) {
+int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	set_term_color(env_vars_ptr->term_color);
 
 	select_drive(0);
@@ -30,4 +30,6 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	print("[2] IDE2 - Status: "); translate_status(identify_drive(0xA0));
 	select_drive(3);
 	print("[3] IDE3 - Status: "); translate_status(identify_drive(0xB0));
+
+	return 0;
 }

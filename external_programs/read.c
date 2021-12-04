@@ -5,7 +5,7 @@
 #include "../kernel/drivers/utils/mem.h"
 #include "../kernel/libc/strings.h"
 
-void main(env_vars_t* env_vars_ptr, char* input_buffer) {
+int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	select_drive(env_vars_ptr->selected_drive);
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
@@ -53,5 +53,7 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 			}
 		}
 	}
+
+	return 0;
 }
 

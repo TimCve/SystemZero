@@ -2,7 +2,7 @@
 #include "../kernel/drivers/disk/fs.h"
 #include <stdint.h>
 
-void main(env_vars_t* env_vars_ptr, char* input_buffer) {
+int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	set_term_color(env_vars_ptr->term_color);
 	select_drive(env_vars_ptr->selected_drive);
 
@@ -31,4 +31,5 @@ void main(env_vars_t* env_vars_ptr, char* input_buffer) {
 
 	// format drive
 	format_disk();
+	return 0;
 }

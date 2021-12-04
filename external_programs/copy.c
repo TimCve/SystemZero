@@ -2,6 +2,7 @@
 #include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
+#include "../kernel/drivers/utils/mem.h"
 
 int get_str_size(char* string) {
 	int pos = 0;
@@ -11,7 +12,7 @@ int get_str_size(char* string) {
 	return pos + 1;
 }
 
-void main(env_vars_t* env_vars_ptr , char* input_buffer) {
+int main(env_vars_t* env_vars_ptr , char* input_buffer) {
 	select_drive(env_vars_ptr->selected_drive);
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
@@ -56,4 +57,6 @@ void main(env_vars_t* env_vars_ptr , char* input_buffer) {
 	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
 	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free
 	set_free_ptr(get_free_ptr() - 233472); // deallocate
+
+	return 0;
 }

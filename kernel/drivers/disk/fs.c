@@ -33,7 +33,7 @@ void init_fs(env_vars_t* env_vars_ptr) {
 		disk_size = read_target[4];
 		env_vars_ptr->last_allocated_block = read_target[5];
 	} else if(read_target[4] == 0) {
-		print("Calculating system drive size..."); print_newline();
+		print("Calculating drive size..."); print_newline();
 		while(!ATA_err) {
 			read_sectors_ATA_PIO(read_target, lba, 1);
 			ATA_err = ATA_get_ERROR();
