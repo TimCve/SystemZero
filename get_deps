@@ -1,0 +1,15 @@
+#/bin/bash
+
+cd external_programs
+
+grep -r '^#include \".*"$' "$1" | cut -d "\"" -f2 | cut -d "\"" -f1 | while read line; do
+	echo $line | awk -F "/" '{print $NF}'
+	grep -r '^#include \".*"$' "$line" | cut -d "\"" -f2 | cut -d "\"" -f1 | awk -F "/" '{print $NF}'
+	grep -r '^#include \".*"$' ${line%.h}.c 2> /dev/null | cut -d "\"" -f2 | cut -d "\"" -f1 | awk -F "/" '{print $NF}'
+done > deps.temp
+
+cat deps.temp | sort | uniq | while read line; do
+	cd ..
+	find . -name ${line%.h}.c
+	cd external_programs
+done | sed 's/^..//' | paste -s -d " " -

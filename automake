@@ -4,14 +4,20 @@ make clean
 make
 make ESFS_raw_write
 
-for file in external_programs/*.c; do
-	./compile_program "$file" "${file%.*}.elf"
+cd external_programs
+for file in *.c; do
+	../compile_program "$file" "${file%.*}.elf"
 done
 
-for elf in external_programs/*.elf; do 
+for elf in *.elf; do 
 	b=$(basename $elf) 
-	./ESFS_raw_write os-image.bin "${b%.*}" "$elf"
+	../ESFS_raw_write ../os-image.bin "${b%.*}" "$elf"
 done
+
+cd ..
+
+./ESFS_raw_write os-image.bin LICENSE LICENSE
+./ESFS_raw_write os-image.bin manual.txt manual.txt
 
 printf "Write any more files? [y/n] "
 
@@ -36,3 +42,4 @@ while : ; do
 done
 
 make convert_vmdk
+rm external_programs/deps.temp

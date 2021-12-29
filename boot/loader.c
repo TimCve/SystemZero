@@ -61,7 +61,7 @@ void loadkernel() {
 
 	print("Kernel starts at block: "); print_dec(kernel_start_block); print_newline();
 	
-    read_sectors_ATA_PIO(page, kernel_start_block, 60);
+    read_sectors_ATA_PIO(page, kernel_start_block, 70);
 
     uint32_t* kernelFile = page;
 

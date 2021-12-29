@@ -1,111 +1,131 @@
 #include <stdint.h>
 #include "../kernel/env_vars.h"
-#include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/io/keyboard.h"
+#include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
-#include "../kernel/drivers/utils/mem.h"
 #include "../kernel/libc/strings.h"
-#include "../kernel/vga_colors.h"
+#include "../kernel/drivers/utils/mem.h"
 
-#define MAX_CHARS 2000
+void print_text_buffer(uint8_t* buffer, uint32_t line_offset) {
+	uint32_t line_counter = 0;
+	uint32_t char_index = 0;
 
-void print_buffer(char* buffer, int offset, int as_hex) {
-	int line_ctr = 0;
-	int char_in_line_ctr = 0;
-	int index = offset;
-
-	while(line_ctr < 24) {
-		if(buffer[index] == 0xA && as_hex == 0) {
-			print_newline();
-			line_ctr++;
-			char_in_line_ctr = 0;
-		} else {
-			if(as_hex == 0) {
-				print_char(buffer[index]);
-				char_in_line_ctr++;
-			} else {
-				print_hex(buffer[index]);
-				print_char(' ');
-				char_in_line_ctr += 3;
+	// seek to correct part of text buffer
+	while(line_counter != line_offset) {
+		for(int i = 0; i < 80; i++) {
+			if(buffer[char_index] == '\n') {
+				char_index++;
+				break;
 			}
-			if(char_in_line_ctr >= 80) {
-				char_in_line_ctr = 0;
-				line_ctr++;
-			}
+			char_index++;
 		}
-		index++;
+		line_counter++;
+	}
+
+	clear(); 
+
+	// print out text buffer
+	line_counter = 0;
+	
+	while(line_counter < 24) {
+		for(int i = 0; i < 80; i++) {
+			if(buffer[char_index] == '\n') {
+				print_newline();
+				char_index++;
+				break;
+			} else {
+				print_char(buffer[char_index]);
+			}
+			char_index++;
+		}
+		line_counter++;
 	}
 }
 
-void reprint(uint32_t* file, int read_offset, int as_hex) {
-	clear();
-	print_buffer(file, read_offset, as_hex);
-	print("[ESC] exit [PGUP/PGDN] scroll");
-}
-
-int main(env_vars_t* env_vars_ptr , char* input_buffer) {
+int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 	select_drive(env_vars_ptr->selected_drive);
 	set_superblock();
 	set_term_color(env_vars_ptr->term_color);
-
-	static char filename[512];
-	int as_hex = 0;
-
-	if(strcmp(splice(input_buffer, 1, 0x20), "-x") == 0) {
-		memcpy(filename, splice(input_buffer, 2, 0x20), strlen(splice(input_buffer, 2, 0x20)) * 4);
-		as_hex = 1;
-	} else {
-		memcpy(filename, splice(input_buffer, 1, 0x20), strlen(splice(input_buffer, 1, 0x20)) * 4);
-		as_hex = 0;
-	} 
 
 	uint32_t phy_addr;
 	set_free_ptr(env_vars_ptr->free_mem_ptr);
 
 	// allocate memory for file buffer
 	uint32_t file_memory = malloc(229376, 1, &phy_addr);
-	
-	// create pointer to start of file buffer in memory
-	uint32_t* file = file_memory;
 
-	for(int i = 0; i < 2500; i++) file[i] = 0;
+	// create pointer to start of file buffer in memory
+	uint8_t* file = file_memory;
+
+	for(int i = 0; i < 10000; i++) file[i] = 0;
 
 	// read file contents into memory
-	int file_size = get_file_info(filename).size;
-	file_read(filename, file_memory, (file_size / 512) + 1, 0);
+	int file_size = get_file_info(splice(input_buffer, 1, 0x20)).size;
+	file_read(splice(input_buffer, 1, 0x20), file_memory, (file_size / 512) + 1, 0);
 
-	int read_offset = 0;
+	int INIT_HOLD_ITERATIONS;
+	int CONT_HOLD_ITERATIONS;
+	
+	if(env_vars_ptr->tty_calibration >= 75) {
+		INIT_HOLD_ITERATIONS = PRESS_THRESH_FAST;
+		CONT_HOLD_ITERATIONS = HOLD_THRESH_FAST;
+	} else {
+		INIT_HOLD_ITERATIONS = PRESS_THRESH_SLOW;
+		CONT_HOLD_ITERATIONS = HOLD_THRESH_SLOW;
+	}
+	
+	uint8_t keycode = 0;
+	uint8_t prev_keycode = ENTER;
+	uint8_t cached_prev_keycode = 0;
+	uint8_t ascii_code = 0;
 
-	// do an initial print of the buffer
-	reprint(file, read_offset, as_hex);
+	int hold_iterations = 0;
 
-	uint8_t keycode;
-	uint8_t prev_keycode;
-	while(1) {
+	uint32_t line_offset = 0;
+		
+	print_text_buffer(file, line_offset);
+
+	while(keycode != ESC) {
 		keycode = get_input_keycode();
+		
+		if(keycode != prev_keycode) {	
+			// reset hold iterations
+			hold_iterations = 0;
 
-		if(keycode != prev_keycode) {
+			// set previous scancode variable for key holding detection
 			prev_keycode = keycode;
-
-			if(keycode == 0x1) break; // exit if ESC pressed
-
+		
+			int status = 0;
 			switch(keycode) {
-				case 0x49: { // pgup
-					if(read_offset > 0) read_offset -= 80;
-					reprint(file, read_offset, as_hex);
+				case PGDN: {
+					line_offset++;
+					status = 1;
 					break;
 				}
-				case 0x51: { // pgdn
-					if(read_offset <= file_size) read_offset += 80;
-					reprint(file, read_offset, as_hex);
+				case PGUP: {
+					if(line_offset > 0) {
+						line_offset--;
+						status = 1;
+					}
 					break;
 				}
-				default: break;
 			}
+
+			if(status == 1) print_text_buffer(file, line_offset);
+		
+		} else {
+			// continuous key holding
+			if(prev_keycode == cached_prev_keycode && hold_iterations >= CONT_HOLD_ITERATIONS) {
+				prev_keycode = 0;
+				continue;
+			}
+
+			// initial key holding confirmation delay
+			if(hold_iterations >= INIT_HOLD_ITERATIONS) {
+				cached_prev_keycode = prev_keycode;
+				prev_keycode = 0;
+			} else hold_iterations++;
 		}
 	}
-
-	print_newline();
 
 	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
 	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free

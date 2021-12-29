@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
+#include "drivers/io/graphics.h"
 #include "drivers/io/keyboard.h"
 #include "cpu/isr.h"
 #include "cpu/timer.h"
@@ -147,8 +148,6 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000);
 
-		uint32_t initial_tick = get_tick();
-		print_dec(execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr)); 
-		print(" ["); print_dec(get_tick() - initial_tick); print(" ticks]"); print_newline();
+		print_dec(execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr)); print(" -> exit status"); print_newline();
 	}	
 }

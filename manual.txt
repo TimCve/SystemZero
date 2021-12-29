@@ -1,0 +1,51 @@
+SystemZero User Manual - Written by Zer0flag, its sole developer
+
+command : chain
+________________________________________________________________________________
+DESCRIPTION:
+A program for chaining together other programs. Can also be used
+to print out strings and perform conditional operations.
+
+OPTIONS:
+
+Basic command chaining:
+
+    > chain $program1$program2$program3
+
+will execute program1, program2 and program3 in that order.
+
+Printing strings:
+
+    > chain $"Hello"
+
+will print "Hello" to the screen (can also be used in combination with running
+programs).
+
+Conditional jumping:
+
+!!! NOTE !!!
+A program returns a 0 if it runs properly
+A program returns a 1 if it encounters an error
+An attempt to run a non-existant program will return a 2
+
+    > chain $drive 1$~0:4~$"don't print this"$"print this"
+
+will only print "print this" if drive 1 exists (drive 1 command returns a 0).
+The syntax is ~x:y~ where x is the exit status that you are checking for
+and y is the index of the statement you are jumping to if that status is
+returned. Statement indexes start at 1. This command will print both
+"don't print this" and "print this" if drive 1 is absent.
+
+Unconditional jumping:
+
+    > chain $drive 1$@4@$format$drive 0
+
+will go to drive 1, skip the third statement and go straight to the fourth.
+Syntax is @y@ where y is the index of the statement you are jumping to.
+
+EXAMPLE USAGE:
+
+    > chain $drive 1$~0:4~$~1:6~$"drive exists"$@7@$"drive absent"$"done"
+
+will print "drive exists" "end" if drive 1 exists and will print
+"drive absent" "end" if drive 1 is absent.
