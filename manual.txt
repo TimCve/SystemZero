@@ -49,3 +49,216 @@ EXAMPLE USAGE:
 
 will print "drive exists" "end" if drive 1 exists and will print
 "drive absent" "end" if drive 1 is absent.
+
+
+command : cls
+________________________________________________________________________________
+DESCRIPTION:
+A program that clears the screen (yes, only that).
+
+EXAMPLE USAGE:
+
+    > cls
+
+will clear the screen.
+
+
+command : color
+________________________________________________________________________________
+DESCRIPTION:
+A program that allows you to change the terminal color scheme.
+
+OPTIONS:
+
+    > color [0-15] [0-15]
+
+the first parameter is the background,
+the second parameter is the foreground.
+
+VGA COLOR TRANSLATIONS:
+0  - black
+1  - blue
+2  - green
+3  - cyan
+4  - red
+5  - magenta
+6  - brown
+7  - white
+8  - gray
+9  - light blue
+10 - light green
+11 - light cyan
+12 - light red
+13 - light magenta
+14 - yellow
+15 - bright white
+
+EXAMPLE USAGE:
+
+    > color 1 15
+
+will bring you back to the default color scheme (white on blue).
+
+
+command : copy
+________________________________________________________________________________
+DESCRIPTION:
+A program that allows you to copy files both within a single drive or across
+multiple drives.
+
+OPTIONS:
+
+    > copy <source_file>:x <destination_file>:y 
+
+will copy source_file located on the drive with index of x into a file called
+destination_file which will be located on drive with index of y.
+
+EXAMPLE USAGE:
+
+    > copy LICENSE:0 LICENSE_copy:1
+
+will copy LICENSE from IDE0 to LICENSE_copy on IDE1.
+
+
+command : del
+________________________________________________________________________________
+DESCRIPTION:
+A program that deletes a file.
+
+EXAMPLE USAGE:
+
+    > del LICENSE
+
+will delete the LICENSE file.
+
+
+command : drive
+________________________________________________________________________________
+DESCRIPTION:
+A program that changes your selected drive.
+
+EXAMPLE USAGE:
+
+    > drive 2
+
+will set your drive to IDE2.
+
+
+command : drives
+________________________________________________________________________________
+DESCRIPTION:
+A program that lets you view your available drives.
+
+EXAMPLE USAGE:
+
+    > drives
+
+will list all your possble drives, they can have a status of 'absent' or
+'exists'.
+
+
+command : edit
+________________________________________________________________________________
+DESCRIPTION:
+A program that lets you edit text files.
+
+EXAMPLE USAGE:
+
+    > edit LICENSE
+
+will open LICENSE for editing.
+
+KEYBINDS:
+ctrl+s    save
+ctrl+r    reset cursor to top left
+esc       quit
+pgup      scroll up
+pgdn      scroll down
+
+
+command : format
+________________________________________________________________________________
+DESCRIPTION:
+A program that formats the selected drive with ESFS 
+(will not remove the SystemZero kernel if it is on the drive).
+
+!!! NOTE !!! 
+Use this carefully! It will wipe all your files on that drive!
+
+EXAMPLE USAGE:
+
+    IDE3> format
+
+will format IDE3 with ESFS.
+
+
+command : hexedit
+________________________________________________________________________________
+DESCRIPTION:
+A program that lets you edit files in hex mode.
+
+EXAMPLE USAGE:
+
+    > hexedit LICENSE
+
+will open LICENSE for editing in hex mode.
+(all keybinds are shown inside the program)
+
+
+command : list
+________________________________________________________________________________
+DESCRIPTION:
+A program that lists all the files on the selected drive and show their size.
+
+EXAMPLE USAGE:
+
+    IDE0> list
+
+will list all files on IDE0 and show their size.
+
+
+command : read
+________________________________________________________________________________
+DESCRIPTION:
+A program that will dump all the text from a file onto the screen.
+
+EXAMPLE USAGE:
+
+    > read LICENSE
+
+dumps all text from LICENSE onto the screen (unreadable).
+
+
+command : touch
+________________________________________________________________________________
+DESCRIPTION:
+A program that will create a file with the specified name (if that file
+doesn't already exist).
+
+EXAMPLE USAGE:
+
+    > touch test.txt
+
+will create an empty file called test.txt
+
+
+command : view
+________________________________________________________________________________
+DESCRIPTION:
+A program that will allow you to read a file with scrolling.
+
+OPTIONS:
+
+    > view LICENSE
+
+will view LICENSE from the start.
+
+    > view LICENSE 10
+
+will view LICENSE from the 10th line.
+
+KEYBINDS:
+pgup    scroll up
+pgup    scroll down
+
+Thanks for reading the SystemZero manual.
