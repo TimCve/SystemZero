@@ -26,7 +26,7 @@ Conditional jumping:
 !!! NOTE !!!
 A program returns a 0 if it runs properly
 A program returns a 1 if it encounters an error
-An attempt to run a non-existant program will return a 2
+An attempt to run a non-existent program will return a 2
 
     > chain $drive 1$~0:4~$"don't print this"$"print this"
 
@@ -153,7 +153,7 @@ EXAMPLE USAGE:
 
     > drives
 
-will list all your possble drives, they can have a status of 'absent' or
+will list all your possible drives, they can have a status of 'absent' or
 'exists'.
 
 
@@ -168,7 +168,7 @@ EXAMPLE USAGE:
 
 will open LICENSE for editing.
 
-KEYBINDS:
+KEYBINDINGS:
 ctrl+s    save
 ctrl+r    reset cursor to top left
 esc       quit
@@ -202,7 +202,7 @@ EXAMPLE USAGE:
     > hexedit LICENSE
 
 will open LICENSE for editing in hex mode.
-(all keybinds are shown inside the program)
+(all keybindings are shown inside the program)
 
 
 command : list
@@ -257,7 +257,7 @@ will view LICENSE from the start.
 
 will view LICENSE from the 10th line.
 
-KEYBINDS:
+KEYBINDINGS:
 pgup    scroll up
 pgup    scroll down
 
