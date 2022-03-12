@@ -41,8 +41,9 @@ void reprint_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t selected
 	print_char(202);
 	for(int i = 0; i < 73; i++) print_char(205);
 
-	print("ESC: exit | PGUP/PGDN: scroll | c: change byte | d: delete byte | i: insert byte");
-	print("w: write changes to file");
+	print("ESC: exit | PGUP/PGDN or J/K: scroll | c: change byte | d: delete byte"); 
+	print_newline();
+	print("i: insert byte | w: write changes to file");
 	print_newline();
 }
 
@@ -100,6 +101,7 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 			if(keypress_counter >= keypress_limit) {
 				keypress_counter = 0;
 				switch(keycode) {
+					case 0x25:
 					case PGUP: {
 						if(read_offset >= 24) {
 							read_offset -= 24;
@@ -107,6 +109,7 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 						}
 						break;
 					}
+					case 0x24:
 					case PGDN: {
 						read_offset += 24;
 						status = 0;

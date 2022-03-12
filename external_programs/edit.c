@@ -144,6 +144,7 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 							break;
 						}
 					}
+					
 				}
 				
 				if(status == 0) {
@@ -159,72 +160,89 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 				actual_selected_char = print_text_buffer(env_vars_ptr, file, line_offset, selected_char);
 			} else {
 				int status = 0;
-				switch(keycode) {
-					case BACKSPACE: {
-						int counter = actual_selected_char - 1;
-						while(counter < file_size) {
-							file[counter] = file[counter + 1];
-							counter++;
-						}
-						file_size--;
-						selected_char--;
-						status = 1;
-						break;
-					}
-					case L_ARROW: {
-						selected_char--;
-						status = 1;
-						break;
-					}
-					case R_ARROW: {
-						selected_char++;
-						status = 1;
-						break;
-					}
-					case ENTER: {
-						int counter = file_size;
-						while(counter > (actual_selected_char - 1)) {
-							file[counter + 1] = file[counter];
-							counter--;	
-						}
-						file[actual_selected_char] = '\n';
-						selected_char++;
-						file_size++;
-						status = 1;
-						break;
-					}
-					case U_ARROW: {
-						int newlines = 0;
-						while(newlines < 2) {
+				if(!ctrl_pressed) {
+					switch(keycode) {
+						case BACKSPACE: {
+							int counter = actual_selected_char - 1;
+							while(counter < file_size) {
+								file[counter] = file[counter + 1];
+								counter++;
+							}
+							file_size--;
 							selected_char--;
-							actual_selected_char--;
-							if(file[actual_selected_char] == '\n') newlines++;
-							if(actual_selected_char == 0) break;
-						}
-						if(actual_selected_char != 0) selected_char++;
-						status = 1;
-						break;
-					}
-					case D_ARROW: {
-						while(file[actual_selected_char] != '\n') {
-							selected_char++;
-							actual_selected_char++;
-						}
-						selected_char++;
-						status = 1;
-						break;
-					}
-					case PGDN: {
-						line_offset++;
-						status = 1;
-						break;
-					}
-					case PGUP: {
-						if(line_offset > 0) {
-							line_offset--;
 							status = 1;
+							break;
 						}
-						break;
+						case L_ARROW: {
+							selected_char--;
+							status = 1;
+							break;
+						}
+						case R_ARROW: {
+							selected_char++;
+							status = 1;
+							break;
+						}
+						case ENTER: {
+							int counter = file_size;
+							while(counter > (actual_selected_char - 1)) {
+								file[counter + 1] = file[counter];
+								counter--;	
+							}
+							file[actual_selected_char] = '\n';
+							selected_char++;
+							file_size++;
+							status = 1;
+							break;
+						}
+						case U_ARROW: {
+							int newlines = 0;
+							while(newlines < 2) {
+								selected_char--;
+								actual_selected_char--;
+								if(file[actual_selected_char] == '\n') newlines++;
+								if(actual_selected_char == 0) break;
+							}
+							if(actual_selected_char != 0) selected_char++;
+							status = 1;
+							break;
+						}
+						case D_ARROW: {
+							while(file[actual_selected_char] != '\n') {
+								selected_char++;
+								actual_selected_char++;
+							}
+							selected_char++;
+							status = 1;
+							break;
+						}
+						case PGDN: {
+							line_offset++;
+							status = 1;
+							break;
+						}
+						case PGUP: {
+							if(line_offset > 0) {
+								line_offset--;
+								status = 1;
+							}
+							break;
+						}
+					}
+				} else {	
+					switch(keycode) {
+						case U_ARROW: {
+							line_offset++;
+							status = 1;
+							break;
+						}
+						case D_ARROW: {
+							if(line_offset > 0) {
+								line_offset--;
+								status = 1;
+							}
+							break;
+						}
 					}
 				}
 

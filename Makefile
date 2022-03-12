@@ -38,7 +38,7 @@ build/bootloader/loader_2.o build/drivers/*.o: boot/*.c ${BOOTLOADER_DRIVERS}
 
 # link object files into kernel loader
 build/bootloader/loader.elf: build/bootloader/loader_2.o build/drivers/*.o
-	${LD} -T ld/loader.ld $^ -o $@
+	${LD} -r -T ld/loader.ld $^ -o $@
 	rm build/bootloader/loader_2.o
 
 # assemble first stage bootloader

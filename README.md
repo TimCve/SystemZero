@@ -5,7 +5,7 @@ Official website: https://z3r0flag.github.io/SysZero
 
 ### Dependencies for building from source
 
-`bash, gcc, nasm, make, (optionally virtualbox to convert .bin drive to .vmdk)`
+`bash, gcc, nasm, gnu make, gnu ld, (optionally virtualbox to convert .bin drive to .vmdk)`
 
 To build, simply run this command in the project root:
 `./automake`

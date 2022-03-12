@@ -1,8 +1,14 @@
 #!/bin/bash
 
-make clean
-make
-make ESFS_raw_write
+if make --version | grep "^GNU Make" >& /dev/null; then
+	MAKE=make
+else
+	MAKE=gmake
+fi
+
+${MAKE} clean
+${MAKE}
+${MAKE} ESFS_raw_write
 
 cd external_programs
 for file in *.c; do
@@ -41,5 +47,5 @@ while : ; do
 	fi
 done
 
-make convert_vmdk
+${MAKE} convert_vmdk
 rm external_programs/deps.temp
