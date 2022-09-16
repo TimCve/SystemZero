@@ -232,15 +232,15 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 				} else {	
 					switch(keycode) {
 						case U_ARROW: {
-							line_offset++;
-							status = 1;
-							break;
-						}
-						case D_ARROW: {
 							if(line_offset > 0) {
 								line_offset--;
 								status = 1;
 							}
+							break;
+						}
+						case D_ARROW: {
+							line_offset++;
+							status = 1;
 							break;
 						}
 					}

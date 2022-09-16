@@ -96,13 +96,13 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 		
 			int status = 0;
 			switch(keycode) {
-				case PGUP:
+				case PGDN:
 				case D_ARROW: {
 					line_offset++;
 					status = 1;
 					break;
 				}
-				case PGDN:
+				case PGUP:
 				case U_ARROW: {
 					if(line_offset > 0) {
 						line_offset--;
