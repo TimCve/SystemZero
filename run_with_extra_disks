@@ -1,14 +1,19 @@
 #!/bin/bash
-
-if [ "$1" == "gtk" ]
-then
-	echo "Running with gtk display and gl acceleration..."
-	qemu-system-i386 -display gtk,gl=on -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
-elif [ "$1" == "sdl" ]
-then
-	echo "Running with sdl display and gl acceleration..."
-	qemu-system-i386 -display sdl,gl=on -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
-else
-	echo "Running with no acceleration (Available options: sdl, gtk)"
-	qemu-system-i386 -drive format=raw,file=os-image.bin -drive format=raw,file=virtual_disks/drive_1.bin -drive format=raw,file=virtual_disks/drive_2.bin -drive format=raw,file=virtual_disks/drive_3.bin
-fi
+set -euo pipefail
+cd -- "$(dirname -- "$0")"
+make all
+args=(-m 64M -drive format=raw,file=os-image.bin,index=0)
+case "${1:-}" in
+    gtk|sdl) args+=(-display "$1");;
+    "") ;;
+    *) printf 'Usage: %s [gtk|sdl]\n' "$0" >&2; exit 1;;
+esac
+for index in 1 2 3; do
+    image="virtual_disks/drive_$index.bin"
+    if [ ! -f "$image" ]; then
+        printf 'Missing %s; run ./create_virtual_disks first.\n' "$image" >&2
+        exit 1
+    fi
+    args+=(-drive "format=raw,file=$image,index=$index")
+done
+exec qemu-system-i386 "${args[@]}"

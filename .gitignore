@@ -7,3 +7,6 @@ virtual_disks/
 ESFS_raw_write
 
 external_programs/*.elf
+
+*.bin.bak
+__pycache__/

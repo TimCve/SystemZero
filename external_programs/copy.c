@@ -1,62 +1,32 @@
-#include <stdint.h>
 #include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
 #include "../kernel/drivers/utils/mem.h"
-
-int get_str_size(char* string) {
-	int pos = 0;
-
-	while(string[pos] != 0x00) pos++;
-	
-	return pos + 1;
-}
-
-int main(env_vars_t* env_vars_ptr , char* input_buffer) {
-	select_drive(env_vars_ptr->selected_drive);
-	set_superblock();
-	set_term_color(env_vars_ptr->term_color);
-
-	static char f1[512];
-	uint8_t f1_drive;
-	memcpy(f1, splice(input_buffer, 1, 0x20), get_str_size(splice(input_buffer, 1, 0x20)));
-	f1_drive = atoi(splice(f1, 0, ':'));
-
-	static char f2[512];
-	uint8_t f2_drive;
-	memcpy(f2, splice(input_buffer, 2, 0x20), get_str_size(splice(input_buffer, 2, 0x20)));
-	f2_drive = atoi(splice(f2, 0, ':'));
-
-	select_drive(f2_drive);
-
-	// create new empty file with specified name
-	file_create(splice(f2, 1, ':'), env_vars_ptr);
-
-	select_drive(f1_drive);
-
-	uint32_t phy_addr;
-	set_free_ptr(env_vars_ptr->free_mem_ptr);
-	
-	// allocate memory for file buffer
-	uint32_t file_memory = malloc(229376, 1, &phy_addr);
-
-	// read file contents into memory
-	int file_size = get_file_info(splice(f1, 1, ':')).size;
-	file_read(splice(f1, 1, ':'), file_memory, (file_size / 512) + 1, 0);
-
-	// create pointer to start of file buffer in memory
-	uint32_t* file = file_memory;
-
-	int write_size = get_file_info(splice(f1, 1, ':')).size - get_str_size(splice(f1, 1, ':'));
-
-	select_drive(f2_drive);
-	print("Copying data (will take a while for large files)... "); print_newline();
-	// write copy data into empty file
-	file_write(splice(f2, 1, ':'), file, write_size, env_vars_ptr);
-
-	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
-	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free
-	set_free_ptr(get_free_ptr() - 233472); // deallocate
-
-	return 0;
+#include "../kernel/drivers/disk/ata.h"
+#include "../kernel/libc/strings.h"
+int main(env_vars_t *env, char *args) {
+    char source[512], dest[512], source_name[512], dest_name[512];
+    char *token = splice(args, 1, ' '); memcpy(source, token, strlen(token) + 1);
+    token = splice(args, 2, ' '); memcpy(dest, token, strlen(token) + 1);
+    if (source[0] < '0' || source[0] > '3' || source[1] != ':' ||
+        dest[0] < '0' || dest[0] > '3' || dest[1] != ':' || !source[2] || !dest[2]) {
+        print("Usage: copy DRIVE:SOURCE DRIVE:DESTINATION"); print_newline(); return 1;
+    }
+    memcpy(source_name, source + 2, strlen(source + 2) + 1);
+    memcpy(dest_name, dest + 2, strlen(dest + 2) + 1);
+    if (source[0] == dest[0] && !strcmp(source_name, dest_name)) return 1;
+    select_drive(source[0] - '0');
+    inode_t info = get_file_info(source_name);
+    if (!info.valid) { print("Source file unavailable."); print_newline(); return 1; }
+    uint32_t sectors = (info.size + 511) / 512;
+    uint8_t *data = (void *)malloc(sectors ? sectors * 512 : 1, 1, 0);
+    if (!data || file_read(source_name, data, sectors, 0) == 2) return 1;
+    select_drive(dest[0] - '0');
+    if (!set_superblock()) { print("Destination filesystem unavailable."); print_newline(); return 1; }
+    if (get_file_info(dest_name).valid) { print("Destination already exists."); print_newline(); return 1; }
+    if (file_create(dest_name, env)) return 1;
+    if (file_write(dest_name, data, info.size, env) != (int)info.size) {
+        file_delete(dest_name, env); print("Copy failed."); print_newline(); return 1;
+    }
+    print("Copied "); print_dec(info.size); print(" bytes."); print_newline(); return 0;
 }

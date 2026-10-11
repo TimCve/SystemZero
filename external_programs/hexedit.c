@@ -3,218 +3,63 @@
 #include "../kernel/drivers/io/keyboard.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
+#include "../kernel/drivers/disk/ata.h"
 #include "../kernel/libc/strings.h"
 #include "../kernel/drivers/utils/mem.h"
-
-void hex_pad_zeroes(uint32_t num, uint32_t maxnum) {
-	if(num < (maxnum / 16)) {
-		print_char('0');
-		hex_pad_zeroes(num, maxnum / 16);
-	} else {
-		return;
-	}
+static void render(const uint8_t *data, uint32_t size, uint32_t offset, uint32_t cursor, uint8_t color) {
+    clear();
+    for (uint32_t row = 0; row < 20; row++) {
+        set_term_color(color); print_hex(offset + row * 24); print(": ");
+        for (uint32_t col = 0; col < 24; col++) {
+            uint32_t pos = offset + row * 24 + col;
+            set_term_color(pos == cursor ? (color << 4) | (color >> 4) : color);
+            if (pos < size) { if (data[pos] < 16) print_char('0'); print_hex(data[pos]); print_char(' '); }
+            else print("   ");
+        }
+        set_cursor_position((row + 1) * 160);
+    }
+    set_term_color(color); print("Arrows/PgUp/PgDn: move | c: change | i: insert | d: delete"); print_newline();
+    print("w: save | Esc: quit"); print_newline();
 }
-
-void reprint_buffer(env_vars_t* env_vars_ptr, uint8_t* buffer, uint32_t selected_byte, uint32_t read_offset) {
-	set_term_color(env_vars_ptr->term_color);
-	clear();
-	print("SYSTEMZERO STANDARD HEX EDITOR"); print_newline();
-
-	for(int i = 0; i < 20; i++) {
-		set_term_color(env_vars_ptr->term_color);
-		hex_pad_zeroes(read_offset + (i * 24), 0xFFFFFF);
-		print_hex(read_offset+(i * 24)); print_char(186);
-		for(int j = 0; j < 24; j++)	{
-			if(selected_byte == (j + (i * 24))) 
-				set_term_color(((env_vars_ptr->term_color) >> 4) | ((env_vars_ptr->term_color) << 4));
-			else
-				set_term_color(env_vars_ptr->term_color);
-			if(buffer[j + (i * 24)] < 0x10) print_char('0');
-			print_hex(buffer[j + (i * 24)]);
-			print_char(' ');
-		}
-		print_newline();
-	}
-
-	set_term_color(env_vars_ptr->term_color);
-	for(int i = 0; i < 6; i++) print_char(205);
-	print_char(202);
-	for(int i = 0; i < 73; i++) print_char(205);
-
-	print("ESC: exit | PGUP/PGDN or J/K: scroll | c: change byte | d: delete byte"); 
-	print_newline();
-	print("i: insert byte | w: write changes to file");
-	print_newline();
-}
-
-int main(env_vars_t* env_vars_ptr, char* input_buffer) {
-	select_drive(env_vars_ptr->selected_drive);
-	set_superblock();
-	set_term_color(env_vars_ptr->term_color);
-
-	uint32_t phy_addr;
-	set_free_ptr(env_vars_ptr->free_mem_ptr);
-
-	// allocate memory for file buffer
-	uint32_t file_memory = malloc(229376, 1, &phy_addr);
-
-	// create pointer to start of file buffer in memory
-	uint8_t* file = file_memory;
-	
-	for(int i = 0; i < 10000; i++) file[i] = 0;
-	
-	// read file contents into memory
-	int file_size = get_file_info(splice(input_buffer, 1, 0x20)).size;
-	file_read(splice(input_buffer, 1, 0x20), file_memory, (file_size / 512) + 1, 0);
-
-	uint32_t selected_byte = 0;
-	uint32_t read_offset = 0;
-
-	uint8_t byte_buffer[480];
-
-	uint8_t keycode;
-	uint8_t prev_keycode;
-	int status;
-	static char byte_input[100];
-	uint32_t keypress_limit;
-
-	if(env_vars_ptr->tty_calibration >= 75) {
-		keypress_limit = 100000;
-	} else {
-		keypress_limit = 500000;
-	}
-
-	while(1) {
-		memcpy(byte_buffer, file + read_offset, sizeof(byte_buffer));
-		reprint_buffer(env_vars_ptr, &byte_buffer, selected_byte, read_offset);
-
-		if(status == 1) break;
-
-		int keypress_counter = 0;
-
-		while(1) {
-			keycode = get_input_keycode();
-			status = 2;
-			
-			if(keycode == prev_keycode) keypress_counter++;
-
-			if(keypress_counter >= keypress_limit) {
-				keypress_counter = 0;
-				switch(keycode) {
-					case 0x25:
-					case PGUP: {
-						if(read_offset >= 24) {
-							read_offset -= 24;
-							status = 0;
-						}
-						break;
-					}
-					case 0x24:
-					case PGDN: {
-						read_offset += 24;
-						status = 0;
-						break;
-					}
-					case R_ARROW: {
-						if(selected_byte < 479) {
-							selected_byte++;
-							status = 0;
-						}
-						break;
-					}
-					case L_ARROW: {
-						if(selected_byte > 0) {
-							selected_byte--;
-							status = 0;
-						}
-						break;
-					}
-					case U_ARROW: {
-						if(selected_byte >= 24) {
-							selected_byte -= 24;
-							status = 0;
-						}
-						break;
-					}
-					case D_ARROW: {
-						if(selected_byte < 454) {
-							selected_byte += 24;
-							status = 0;
-						}
-						break;
-					}
-					case 0x2e: { // c key
-						while(get_input_keycode() == 0x2e) continue;
-						set_cursor_position(3840);
-						print("INPUT NEW BYTE VALUE: ");
-						for(int i = 0; i < 100; i++) byte_input[i] = 0;
-						kbd_readline(byte_input, env_vars_ptr->tty_calibration, 4);
-						int byte_value = htoi(splice(byte_input, 0, 0x20));
-						if(byte_value >= 0 && byte_value <= 0xFF) {
-							file[read_offset + selected_byte] = (uint8_t)byte_value;
-							status = 0;
-						}
-						break;
-					}
-					case 0x17: { // i key
-						while(get_input_keycode() == 0x17) continue;	
-						int counter = file_size;
-						while(counter > (read_offset + selected_byte)) {
-							file[counter + 1] = file[counter];
-							counter--;	
-						}
-						set_cursor_position(3840);
-						print("INPUT BYTE VALUE: ");
-						for(int i = 0; i < 100; i++) byte_input[i] = 0;
-						kbd_readline(byte_input, env_vars_ptr->tty_calibration, 4);
-						int byte_value = htoi(splice(byte_input, 0, 0x20));
-						if(byte_value >= 0 && byte_value <= 0xFF) {
-							file[read_offset + selected_byte] = (uint8_t)byte_value;
-							status = 0;
-						}
-						file_size++;
-						break;	
-					}
-					case 0x20: { // d key
-						while(get_input_keycode() == 0x20) continue;	
-						int counter = (read_offset + selected_byte);
-						while(counter < file_size) {
-							file[counter] = file[counter + 1];
-							counter++;
-						}
-						status = 0;
-						file_size--;	
-						break;
-					}
-					case 0x11: { // w key
-						print("Saving changes...");
-						file_delete(splice(input_buffer, 1, 0x20), env_vars_ptr);
-						file_create(splice(input_buffer, 1, 0x20), env_vars_ptr);
-						int wrote = file_write(splice(input_buffer, 1, 0x20), file, file_size - strlen(splice(input_buffer, 1, 0x20)), env_vars_ptr);
-						print(" Wrote "); print_dec(wrote); print(" bytes!");
-						status = 0;
-						break;
-					} 
-					case ESC: {
-						status = 1;
-						break;
-					}
-					default: {
-						status = 2;
-						break;
-					}
-				}
-			}
-
-			prev_keycode = keycode;
-
-			if(status != 2) break;
-		}
-	}
-
-	// FREE & DEALLOCATE MEMORY USED FOR FILE BUFFER
-	for(int i = 0; i < (file_size / 4); i++) file[i] = 0; // free
-	set_free_ptr(get_free_ptr() - 233472); // deallocate
-
-	return 0;
+int main(env_vars_t *env, char *args) {
+    select_drive(env->selected_drive); set_term_color(env->term_color);
+    char filename[512]; char *part = splice(args, 1, ' '); memcpy(filename, part, strlen(part) + 1);
+    inode_t info = get_file_info(filename);
+    if (!info.valid) { print("File not found."); print_newline(); return 1; }
+    uint8_t *file = (void *)malloc(ESFS_MAX_FILE + 512, 1, 0);
+    if (!file) return 1;
+    memset(file, 0, ESFS_MAX_FILE + 512);
+    if (file_read(filename, file, (info.size + 511) / 512, 0) == 2) return 1;
+    uint32_t size = info.size, cursor = 0, offset = 0; uint8_t previous = 0; char *notice = "";
+    for (;;) {
+        render(file, size, offset, cursor, env->term_color); print(notice);
+        uint8_t key;
+        do { key = get_input_keycode(); } while (!key || key == previous);
+        previous = key;
+        if (key == ESC) break;
+        if (key == L_ARROW && cursor) cursor--;
+        if (key == R_ARROW && cursor < size) cursor++;
+        if (key == U_ARROW && cursor >= 24) cursor -= 24;
+        if (key == D_ARROW) cursor = size - cursor > 24 ? cursor + 24 : size;
+        if (key == PGUP) cursor = cursor > 480 ? cursor - 480 : 0;
+        if (key == PGDN) cursor = size - cursor > 480 ? cursor + 480 : size;
+        if (cursor < offset) offset = cursor / 24 * 24;
+        if (cursor >= offset + 480) offset = (cursor / 24 - 19) * 24;
+        if (key == 0x20 && cursor < size) {
+            for (uint32_t i = cursor; i + 1 < size; i++) file[i] = file[i + 1];
+            size--;
+        }
+        if ((key == 0x2e && cursor < size) || (key == 0x17 && size < ESFS_MAX_FILE)) {
+            char input[4] = {0}; print("Byte value (hex): "); kbd_readline(input, env->tty_calibration, sizeof input);
+            int valid = strlen(input) > 0 && strlen(input) <= 2;
+            for (int i = 0; input[i]; i++) if (!((input[i] >= '0' && input[i] <= '9') ||
+                (input[i] >= 'a' && input[i] <= 'f') || (input[i] >= 'A' && input[i] <= 'F'))) valid = 0;
+            if (valid) {
+                if (key == 0x17) { for (uint32_t i = size; i > cursor; i--) file[i] = file[i - 1]; size++; }
+                file[cursor] = htoi(input);
+            }
+        }
+        if (key == 0x11) notice = file_replace(filename, file, size) ? "Saved." : "Save failed.";
+    }
+    clear(); return 0;
 }

@@ -1,3 +1,5 @@
+#ifndef SYSTEMZERO_IDT_H
+#define SYSTEMZERO_IDT_H
 #include <stdint.h>
 
 #define KERNEL_CS 0x08
@@ -25,11 +27,12 @@ typedef struct {
 } __attribute__((packed)) idt_register_t;
 
 #define IDT_ENTRIES 256
-idt_gate_t idt[IDT_ENTRIES];
-idt_register_t idt_reg;
+extern idt_gate_t idt[IDT_ENTRIES];
+extern idt_register_t idt_reg;
 
 #define low_16(address) (uint16_t)((address) & 0xFFFF)
 #define high_16(address) (uint16_t)(((address) >> 16) & 0xFFFF)
 
 void set_idt_gate(int n, uint32_t handler);
 void set_idt();
+#endif

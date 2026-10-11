@@ -9,53 +9,15 @@ int strcmp(const char *s1, const char *s2) {
     return (*p1 > *p2) - (*p2  > *p1);
 }
 
-char* splice(char* string, int index, char delim) {
-	char cur_char;
-	int i = 0;
-	int j = 0;
-
-	static char output[512];
-	for(i = 0; i < 512; i++) output[i] = 0;
-
-	i = 0;
-
-	if(index == 0) {
-		i = 0;
-		do {
-			cur_char = string[j];
-			if(cur_char == 0) break;
-			output[i] = cur_char;
-			i++;
-			j++;
-		} while(cur_char != delim);
-		
-		if(string[i]) output[i-1] = 0;
-		output[i] = 0;
-
-	} else {
-		do {
-			do {
-				cur_char = string[j];
-				if(cur_char == 0) break;
-				j++;
-			} while(cur_char != delim);
-			i++;
-		} while(i != index);
-
-		i = 0;
-		do {
-			cur_char = string[j];	
-			if(cur_char == 0) break;
-			output[i] = cur_char;
-			i++;
-			j++;
-		} while(cur_char != delim);
-		output[i] = 0;
-	}
-
-	if(string[j]) output[i-1] = 0;
-
-	return output;
+char *splice(char *string, int index, char delim) {
+    static char output[8][512]; static unsigned slot;
+    char *result = output[slot++ % 8]; result[0] = 0;
+    if (!string || index < 0) return result;
+    while (index && *string) { if (*string++ == delim) index--; }
+    if (index) return result;
+    unsigned n = 0;
+    while (*string && *string != delim && n < 511) result[n++] = *string++;
+    result[n] = 0; return result;
 }
 
 int strlen(char* string) {
@@ -64,22 +26,15 @@ int strlen(char* string) {
 	return pos;
 }
 
-int atoi(char* txt)
-{   
-    int sum, digit, i;
-    sum = 0;
-    i = 0;
-    char cur_char;
-    cur_char = 0;
-
-    do {
-    	cur_char = txt[i + 1];
-        digit = txt[i] - 0x30;
-        sum = (sum * 10) + digit;
-        i++;
-    } while(cur_char != 0);
-
-    return sum;
+int atoi(char *text) {
+    int value = 0, sign = 1;
+    if (*text == '-') { sign = -1; text++; }
+    while (*text >= '0' && *text <= '9') {
+        int digit = *text++ - '0';
+        if (value > (2147483647 - digit) / 10) return sign > 0 ? 2147483647 : -2147483647;
+        value = value * 10 + digit;
+    }
+    return value * sign;
 }
 
 uint32_t htoi(char *hex) {

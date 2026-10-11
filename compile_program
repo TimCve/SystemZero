@@ -1,10 +1,18 @@
 #!/bin/bash
-
-if [ -z "$1" ] || [ -z "$2" ]
-then
-	echo "Usage: $0 <input_file.c> <output_file>"
-else
-	cd ..
-	gcc -g -m32 -Wl,--allow-multiple-definition -ffreestanding -nostartfiles -nostdlib -fno-stack-protector $(./get_deps $1) kernel/drivers/utils/*.c kernel/cpu/*.c build/kernel/interrupt.o external_programs/$1 -o external_programs/$2 -T ld/program.ld
+set -euo pipefail
+if [ "$#" -ne 2 ]; then
+    printf 'Usage: %s <input_file.c> <output_file>\n' "$0" >&2
+    exit 1
 fi
-
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+input=${1##*/}
+if [[ "$input" != *.c || ! -f "$root/external_programs/$input" ]]; then
+    printf 'Source must be a C file in external_programs.\n' >&2
+    exit 1
+fi
+make -C "$root" "external_programs/${input%.c}.elf"
+output=$2
+if [[ "$output" != */* ]]; then output="$root/external_programs/$output"; fi
+if [[ "$output" != "$root/external_programs/${input%.c}.elf" && "$output" != "external_programs/${input%.c}.elf" ]]; then
+    cp -- "$root/external_programs/${input%.c}.elf" "$output"
+fi

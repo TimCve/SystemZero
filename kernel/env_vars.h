@@ -1,3 +1,5 @@
+#ifndef SYSTEMZERO_ENV_VARS_H
+#define SYSTEMZERO_ENV_VARS_H
 #include <stdint.h>
 
 typedef struct {
@@ -7,4 +9,7 @@ typedef struct {
 	uint8_t term_color;
 	uint32_t tty_calibration;
 	uint32_t last_allocated_block;
+	void *filesystem;
 } env_vars_t;
+
+#endif

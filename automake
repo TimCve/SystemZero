@@ -1,51 +1,17 @@
 #!/bin/bash
-
-if make --version | grep "^GNU Make" >& /dev/null; then
-	MAKE=make
-else
-	MAKE=gmake
+set -euo pipefail
+cd -- "$(dirname -- "$0")"
+make all
+if [ -t 0 ]; then
+    read -r -p "Write any more files? [y/n] " answer
+    if [[ "$answer" == y ]]; then
+        read -r -p "Input file names separated by spaces: " -a files
+        for file in "${files[@]}"; do
+            ./ESFS_raw_write --replace os-image.bin "${file##*/}" "$file"
+        done
+    fi
 fi
-
-${MAKE} clean
-${MAKE}
-${MAKE} ESFS_raw_write
-
-cd external_programs
-for file in *.c; do
-	../compile_program "$file" "${file%.*}.elf"
-done
-
-for elf in *.elf; do 
-	b=$(basename $elf) 
-	../ESFS_raw_write ../os-image.bin "${b%.*}" "$elf"
-done
-
-cd ..
-
-./ESFS_raw_write os-image.bin LICENSE LICENSE
-./ESFS_raw_write os-image.bin manual.txt manual.txt
-
-printf "Write any more files? [y/n] "
-
-while : ; do
-	read ans
-	
-	if [ "$ans" == "y" ]; then
-		printf "Input file names separated by a space: "
-		read -a files
-
-		for file in "${files[@]}"; do
-			b=$(basename $file)
-			./ESFS_raw_write os-image.bin "$b" "$file"
-		done
-
-		break	
-	elif [ "$ans" == "n" ]; then
-		break
-	else
-		printf "Unrecognized option, please type [y/n] "
-	fi
-done
-
-${MAKE} convert_vmdk
-rm external_programs/deps.temp
+if command -v VBoxManage >/dev/null 2>&1; then
+    make convert_vmdk
+fi
+printf 'QEMU disk image ready: os-image.bin. Run make run.\n'

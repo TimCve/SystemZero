@@ -1,28 +1,12 @@
 OUTPUT_FORMAT(elf32-i386)
-ENTRY(loadkernel)
-SECTIONS
-{
-    . = 0x01000; /*0x001000*/
-    .text BLOCK(2K) : ALIGN(2K)
-    {
-        *(.text)
-    }
-
-    /*Read-only data*/
-    .rodata BLOCK(2K) : ALIGN(2K)
-    {
-        *(.rodata)
-    }
-
-    /*Read-write data (initialized)*/
-    .data BLOCK(2K) : ALIGN(2K)
-    {
-        *(.data)
-    }
-
-    /*Read-write data (uninitialized) and stack*/
-    .bss BLOCK(2K) : ALIGN(2K)
-    {
-        *(.bss)
-    }
+ENTRY(start)
+PHDRS { text PT_LOAD FLAGS(5); data PT_LOAD FLAGS(6); }
+SECTIONS {
+    . = 0x1000;
+    .text : { KEEP(*(.text.startup)) *(.text .text.*) } :text
+    .rodata : { *(.rodata .rodata.*) } :text
+    .data : { *(.data .data.*) } :data
+    .bss (NOLOAD) : { __bss_start = .; *(.bss .bss.* COMMON) __bss_end = .; } :data
+    /DISCARD/ : { *(.eh_frame* .comment .note*) }
+    ASSERT(__bss_end < 0x80000, "Bootloader overlaps protected-mode stack")
 }

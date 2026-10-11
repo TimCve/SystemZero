@@ -1,46 +1,28 @@
-#include <stdint.h>
 #include "mem.h"
-
-// an address in memory that is known to be free
-uint32_t free_mem_addr = 0x10000;
-
-uint32_t malloc(uint32_t size, int align, uint32_t *phys_addr) {
-    // pages alligned to 0x1000 (4K)
-    if(align == 1 && (free_mem_addr & 0xFFFFF000)) {
-        free_mem_addr &= 0xFFFFF000;
-        free_mem_addr += 0x1000;
-    }
-    
-    // save physical address
-    if(phys_addr) *phys_addr = free_mem_addr;
-
-    // return the start of free memory
-    uint32_t ret = free_mem_addr;
-
-    // increment free memory pointer
-    free_mem_addr += size; 
-
-    return ret;
-} 
-
-uint32_t get_free_ptr() {
-    return free_mem_addr;
+static uint32_t free_mem_addr = HEAP_START;
+uint32_t malloc(uint32_t size, int align, uint32_t *physical) {
+    uint32_t start = free_mem_addr;
+    if (physical) *physical = 0;
+    if (align) start = (start + 4095u) & ~4095u;
+    else start = (start + 3u) & ~3u;
+    if (!size || start < HEAP_START || start >= HEAP_END || size > HEAP_END - start) return 0;
+    free_mem_addr = start + size;
+    if (physical) *physical = start;
+    return start;
 }
-
+uint32_t get_free_ptr(void) { return free_mem_addr; }
 void set_free_ptr(uint32_t value) {
-    free_mem_addr = value;
+    if (value >= HEAP_START && value <= HEAP_END) free_mem_addr = value;
 }
-
-void *memcpy(void *dst, const void *src, uint32_t cnt) {
-    char *psz_dest = (char*)dst;
-    const char *psz_source = (const char*)src;
-
-    if((psz_dest != 0) && (psz_source != 0)) {
-        while(cnt) {
-            *(psz_dest++) = *(psz_source++);
-            cnt--;
-        }
+void heap_release(uint32_t marker) {
+    if (marker >= HEAP_START && marker <= free_mem_addr) {
+        memset((void *)marker, 0, free_mem_addr - marker);
+        free_mem_addr = marker;
     }
-
-    return dst;
+}
+void *memcpy(void *dst, const void *src, uint32_t count) {
+    uint8_t *d = dst; const uint8_t *s = src; while (count--) *d++ = *s++; return dst;
+}
+void *memset(void *dst, int value, uint32_t count) {
+    uint8_t *d = dst; while (count--) *d++ = (uint8_t)value; return dst;
 }

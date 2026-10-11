@@ -1,3 +1,5 @@
+#ifndef SYSTEMZERO_ISR_H
+#define SYSTEMZERO_ISR_H
 #include <stdint.h>
 
 // ISRs reserved for CPU exceptions
@@ -81,3 +83,4 @@ void register_interrupt_handler(uint8_t n, isr_t handler);
 
 void isr_install();
 void isr_handler(registers_t r);
+#endif

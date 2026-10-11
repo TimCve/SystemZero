@@ -1,5 +1,7 @@
 #include "../kernel/env_vars.h"
 #include "../kernel/drivers/disk/fs.h"
+#include "../kernel/drivers/disk/ata.h"
+#include "../kernel/drivers/io/screen.h"
 #include "../kernel/libc/strings.h"
 
 int main(env_vars_t* env_vars_ptr, char* input_buffer) {

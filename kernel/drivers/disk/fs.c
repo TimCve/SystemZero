@@ -1,624 +1,104 @@
-#include "../../env_vars.h"
 #include "fs.h"
-#include "../io/screen.h"
 #include "ata.h"
 #include "../utils/mem.h"
-#include "../../libc/strings.h"
-
-int allocate_data_block(env_vars_t* env_vars_ptr);
-
-superblock_t superblock = { 0xf0f03410, 0, 0, 0, 0, 0};
-inode_t inode;
-int superblock_block = 200;
-
-void save_superblock(env_vars_t* env_vars_ptr) {
-	uint32_t buffer[128];
-	superblock.last_allocated_block = env_vars_ptr->last_allocated_block;
-	
-	for(int i = 0; i < 128; i++) buffer[i] = 0;
-	memcpy(buffer, &superblock, sizeof(superblock));
-
-	write_sectors_ATA_PIO(superblock_block, 1, buffer);
+#include "../io/screen.h"
+typedef struct {
+    esfs_t drives[4];
+    uint8_t inode_cache[4][ESFS_INODE_CACHE_SECTORS * ESFS_SECTOR];
+} fs_runtime_t;
+static env_vars_t *environment;
+static int disk_read(void *arg, uint32_t lba, void *data) {
+    select_drive((uint8_t)(uintptr_t)arg);
+    return read_sectors_ATA_PIO(data, lba, 1) ? 0 : -1;
 }
-
-void init_fs(env_vars_t* env_vars_ptr) {
-	uint8_t ATA_err;
-	uint32_t read_target[128];
-	uint32_t lba = 0;
-	uint32_t disk_size = 0;
-
-	read_sectors_ATA_PIO(read_target, superblock_block, 1);
-
-	if(read_target[0] == superblock.magic && read_target[4] != 0) {
-		disk_size = read_target[4];
-		env_vars_ptr->last_allocated_block = read_target[5];
-	} else if(read_target[4] == 0) {
-		print("Calculating drive size..."); print_newline();
-		while(!ATA_err) {
-			read_sectors_ATA_PIO(read_target, lba, 1);
-			ATA_err = ATA_get_ERROR();
-			lba += 10;
-			disk_size += 5120;
-		}
-		
-		disk_size -= (superblock_block * 512);
-	}
-
-	superblock.blocks = disk_size / 512;
-	superblock.inode_blocks = (disk_size / 512) / 10;
-	superblock.inodes = ((disk_size / 512) / 10) * 8;
-	superblock.disk_size = disk_size;
-
-	if(env_vars_ptr->last_allocated_block == 0) {
-		print("Finding free data block..."); print_newline();
-		allocate_data_block(env_vars_ptr);
-	}
-
-	superblock.last_allocated_block = env_vars_ptr->last_allocated_block;
-	
-	save_superblock(env_vars_ptr);
+static int disk_write(void *arg, uint32_t lba, void *data) {
+    select_drive((uint8_t)(uintptr_t)arg);
+    return write_sectors_ATA_PIO(lba, 1, data) ? 0 : -1;
 }
-
-void set_superblock() {
-	uint32_t superblock_contents[128];
-	read_sectors_ATA_PIO(superblock_contents, superblock_block, 1);
-
-	superblock.magic = superblock_contents[0];
-	superblock.blocks = superblock_contents[1];
-	superblock.inode_blocks = superblock_contents[2];
-	superblock.inodes = superblock_contents[3];
-	superblock.disk_size = superblock_contents[4];
-	superblock.last_allocated_block = superblock_contents[5];
+static int disk_read_many(void *arg, uint32_t lba, uint32_t count, void *data) {
+    select_drive((uint8_t)(uintptr_t)arg);
+    uint8_t *target = data;
+    while (count) {
+        uint8_t batch = count > 255 ? 255 : count;
+        if (!read_sectors_ATA_PIO(target, lba, batch)) return -1;
+        target += batch * ESFS_SECTOR; lba += batch; count -= batch;
+    }
+    return 0;
 }
-
-void format_disk() {
-	print("Formatting disk with ESFS..."); print_newline();
-	uint8_t bwrite[512];
-	int i;
-
-	for(i = 0; i < 512; i++) bwrite[i] = 0;
-
-	print("Writing superblock..."); print_newline();
-
-	memcpy(bwrite, &superblock, sizeof(superblock));
-
-	write_sectors_ATA_PIO(superblock_block, 1, bwrite);
-	print("Superblock written!"); print_newline();
-
-	print("Writing inodes..."); print_newline();
-
-	for(i = 0; i < 512; i++) bwrite[i] = 0;
-	inode.valid = 0;
-	inode.size = 0;
-	for(i = 0; i < 14; i++) inode.indirect_pointers[i] = 0;
-
-	i = 0;
-	while(i < 512) {
-		memcpy(bwrite + i, &inode, sizeof(inode));
-		i += 64;
-	} 
-
-	i = 1;
-	while(i <= superblock.inode_blocks) {
-		write_sectors_ATA_PIO((superblock_block + i), 1, bwrite);
-		i++;
-	}
-
-	print_dec(superblock.inodes); print(" inodes written to "); print_dec(superblock.inode_blocks); print(" blocks!"); print_newline();
-	print_dec((superblock.blocks - superblock.inode_blocks) * 512); print(" bytes avaliable for file creation!"); print_newline(); 
+static int disk_sync(void *arg) {
+    select_drive((uint8_t)(uintptr_t)arg);
+    return ata_flush() ? 0 : -1;
 }
-
-int check_disk_fs() {
-	print("Scanning disk for ESFS filesystem..."); print_newline();
-	uint32_t bread[128];
-	int i;
-
-	for(i = 0; i < 128; i++) bread[i] = 0;
-
-	read_sectors_ATA_PIO(bread, superblock_block, 1);
-	if(bread[0] == superblock.magic) {
-		print("ESFS superblock found!"); print_newline();
-		return 1;
-	} else {
-		print("Disk not formatted with ESFS!"); print_newline();
-		return 0;
-	}
+static esfs_t *current_fs(void) {
+    uint8_t drive = selected_ata_drive();
+    if (!environment || !environment->filesystem || drive >= 4) return 0;
+    return &((fs_runtime_t *)environment->filesystem)->drives[drive];
 }
-
-inode_t get_file_info(uint8_t* name) {
-	uint32_t bread[128];
-	uint32_t dbread[128];
-	uint8_t name_buffer[512];
-	int i;
-	int j;
-	int null_file_cnt = 0;
-
-	inode_t file_info;
-
-	for(i = 0; i < 128; i++) {
-		bread[i] = 0;
-		dbread[i] = 0;
-	}
-
-	for(i = 0; i < 512; i++) name_buffer[i] = 0;
-
-	file_info.valid = 0;
-	file_info.size = 0;
-	for(i = 0; i < 14; i++) file_info.indirect_pointers[i] = 0;
-
-	i = 1;
-	while(null_file_cnt < 100) {
-		read_sectors_ATA_PIO(bread, superblock_block + i, 1);
-
-		j = 0;
-		while(j <= 128) {
-			if(bread[j] == 1) {
-				null_file_cnt = 0;
-				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
-				read_sectors_ATA_PIO(dbread, dbread[0], 1);
-				memcpy(name_buffer, &dbread, sizeof(dbread));
-
-				int set_to_zero = 0;
-				for(int k = 0; k < 512; k++) {
-					if(name_buffer[k] == 0) set_to_zero = 1;
-					if(set_to_zero > 0) name_buffer[k] = 0;
-				}
-
-				if(strcmp(name_buffer, name) == 0) {
-					file_info.valid = 1;
-					file_info.size = bread[j + 1];
-					for(int a = 2; a < 16; a++) file_info.indirect_pointers[a - 2] = bread[j + a];
-
-					return file_info;
-				}
-			} else null_file_cnt++;
-			j += 16;
-		}
-
-		i++;
-	}
+void fs_bind_env(env_vars_t *env) { environment = env; }
+int set_superblock(void) {
+    esfs_t *fs = current_fs();
+    return fs && fs->used && (fs->mounted || !esfs_mount(fs));
 }
-
-void set_file_info(uint8_t* name, inode_t file_info) {
-	uint32_t bread[128];
-	uint32_t dbread[128];
-	uint8_t name_buffer[512];
-	int i;
-	int j;
-	int null_file_cnt = 0;
-
-	i = 1;
-	while(null_file_cnt < 100) {
-		read_sectors_ATA_PIO(bread, superblock_block + i, 1);
-
-		j = 0;
-		while(j <= 128) {
-			if(bread[j] == 1) {
-				null_file_cnt = 0;
-				read_sectors_ATA_PIO(dbread, bread[j + 2], 1);
-				read_sectors_ATA_PIO(dbread, dbread[0], 1);
-				memcpy(name_buffer, &dbread, sizeof(dbread));
-	
-				int set_to_zero = 0;
-				for(int k = 0; k < 512; k++) {
-					if(name_buffer[k] == 0) set_to_zero = 1;
-					if(set_to_zero > 0) name_buffer[k] = 0;
-				}
-
-				if(strcmp(name_buffer, name) == 0) {
-					bread[j] = file_info.valid;
-					bread[j + 1] = file_info.size;
-					for(int a = 2; a < 16; a++) bread[j + a] = file_info.indirect_pointers[a - 2];
-
-					write_sectors_ATA_PIO(superblock_block + i, 1, bread);
-				}
-			} else null_file_cnt++;
-			j += 16;
-		}
-
-		i++;
-	}
+int check_disk_fs(void) { return set_superblock(); }
+int init_fs(env_vars_t *env) {
+    static fs_runtime_t runtime;
+    fs_bind_env(env);
+    if (!env->filesystem) {
+        /* Reserve persistent maps before execute() starts allocating temporary memory.
+           Callbacks live in the kernel, so programs may safely share these mounts. */
+        uint8_t previous = selected_ata_drive();
+        for (uint8_t drive = 0; drive < 4; drive++) {
+            select_drive(drive);
+            uint32_t sectors = ata_sector_count();
+            if (!sectors || sectors > 0x7fffffu) continue;
+            uint32_t bytes = esfs_map_bytes(sectors), map = malloc(bytes, 0, 0);
+            if (!map) continue;
+            runtime.drives[drive] = (esfs_t){.io = (void *)(uintptr_t)drive,
+                .read = disk_read, .write = disk_write, .read_many = disk_read_many,
+                .sync = disk_sync, .sectors = sectors, .used = (void *)map,
+                .used_bytes = bytes, .inode_cache = runtime.inode_cache[drive]};
+        }
+        env->filesystem = &runtime; env->free_mem_ptr = get_free_ptr();
+        select_drive(previous);
+    }
+    return set_superblock();
 }
-
-int allocate_data_block(env_vars_t* env_vars_ptr) {
-	int free_block = 0;
-	uint32_t data_block_read[128];
-
-	// iterate through all possible data blocks
-	for(int block_i = /*superblock_block + superblock.inode_blocks*/ env_vars_ptr->last_allocated_block; block_i <= superblock.blocks; block_i++) {
-		// read the contents of every block into memory
-		read_sectors_ATA_PIO(data_block_read, block_i, 1);
-		
-		// iterate through the contents and see if there is any data stored in the block
-		int data_i;
-		for(data_i = 0; data_i < 128; data_i++) if(data_block_read[data_i]) break;
-
-		// if there are no contents in the block, data_i would have reached the end
-		// now check if this block is used in storing data for files
-		if(data_i >= 127) {
-			free_block = block_i;
-
-			uint32_t inode_block_read[128];
-
-			int block_i_2 = 1;
-			int null_files = 0;
-
-			while(null_files <= 100) {
-				read_sectors_ATA_PIO(inode_block_read, superblock_block + block_i_2, 1);
-
-				int inode_i = 0;
-
-				while(inode_i <= 128) {
-					if(inode_block_read[inode_i] == 1) {
-						null_files = 0;
-
-						int indirect_ptr_i = 2;
-
-						while(indirect_ptr_i < 16) {
-							read_sectors_ATA_PIO(data_block_read, inode_block_read[inode_i + indirect_ptr_i], 1);
-							for(int i = 0; i < 128; i++) {
-								if(data_block_read[i] == free_block) {
-									free_block = 0;
-									break;
-								}
-							}
-
-							if(free_block == 0) break;
-							indirect_ptr_i++;
-						}
-
-						inode_i += 16;
-					} else {
-						null_files++;
-						inode_i += 16;
-						continue;
-					}
-
-					if(free_block == 0) break;
-				}
-
-				if(free_block == 0) break;
-
-				block_i_2++;
-			}
-		}
-
-		if(free_block != 0) {
-			env_vars_ptr->last_allocated_block = free_block;
-			return free_block;
-		}
-	}
+int format_disk(void) {
+    esfs_t *fs = current_fs();
+    return fs && fs->used && !esfs_format(fs);
 }
-
-
-// create a file
-int file_create(char* name, env_vars_t* env_vars_ptr) {
-	inode_t file_info = get_file_info(name);
-	if(file_info.valid == 1) {
-		return 1;
-	}
-	
-	if(!env_vars_ptr->last_allocated_block)
-		env_vars_ptr->last_allocated_block = superblock_block + superblock.inode_blocks;
-
-	uint32_t bread[128];
-	uint32_t dread[128];
-	uint8_t bwrite[512];
-	int i;
-	int j;
-
-	int name_size = 0;
-	i = 0;
-	while(name[i] > 0) {
-		name_size++;
-		i++;
-	}
-
-	for(i = 0; i < 128; i++) bread[i] = 0;
-
-	i = 1;
-	while(i <= superblock.inode_blocks) {
-		j = 0;
-
-		read_sectors_ATA_PIO(bread, superblock_block + i, 1);
-
-		while(j < 128) {
-			if(bread[j] == 0) {
-				inode.valid = 1;
-				inode.size = name_size + 1;
-
-				memcpy(bwrite, &bread, sizeof(bread));
-
-				uint32_t free_block = allocate_data_block(env_vars_ptr);
-
-				inode.indirect_pointers[0] = free_block;
-				memcpy(bwrite + (j * 4), &inode, sizeof(inode));
-
-				write_sectors_ATA_PIO(superblock_block + i, 1, bwrite);
-
-				write_sectors_ATA_PIO(free_block, 1, bwrite);
-				for(int v = 0; v < 512; v++) bwrite[v] = 0;
-
-				uint32_t free_block_2 = allocate_data_block(env_vars_ptr);
-				write_sectors_ATA_PIO(free_block, 1, bwrite);
-
-				memcpy(bwrite, &free_block_2, sizeof(free_block_2));
-
-				write_sectors_ATA_PIO(free_block, 1, bwrite);
-				write_sectors_ATA_PIO(free_block_2, 1, name);
-
-				save_superblock(env_vars_ptr);	
-				return 0;
-			}
-			j += 16;
-		}
-		i++;
-	}
-
-	print("No free inodes available for file creation!"); print_newline();
+inode_t get_file_info(const char *name) {
+    inode_t in = {0}; if (set_superblock()) esfs_find(current_fs(), name, &in, 0); return in;
 }
-
-// print the names of all existing files 
-void file_list() {
-	uint32_t inode_block_read[128];
-	uint32_t data_block_read[128];
-	uint8_t data_block_read_bytes[512];
-	int null_files = 0;
-
-	int	block_i = 1;
-	while(null_files <= 100) {
-		read_sectors_ATA_PIO(inode_block_read, superblock_block + block_i, 1);
-
-		int inode_i = 0;
-		while(inode_i <= 128) {
-			if(inode_block_read[inode_i] == 1) {
-				null_files = 0;
-
-				int file_size = inode_block_read[inode_i + 1];
-				read_sectors_ATA_PIO(data_block_read, inode_block_read[inode_i + 2], 1);
-				read_sectors_ATA_PIO(data_block_read, data_block_read[0], 1);
-	
-				memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
-
-				char chr = 0;
-				int chr_i = 0;
-
-				char name[512];
-
-				do {
-					chr = data_block_read_bytes[chr_i];
-					name[chr_i] = chr;
-					chr_i++;
-				} while(chr);
-
-				file_read(name, data_block_read_bytes, 1, 0);
-
-				if(data_block_read_bytes[0] == 0x7F && data_block_read_bytes[1] == 0x45 && data_block_read_bytes[2] == 0x4C && data_block_read_bytes[3] == 0x46) {
-					print("[x] ");
-				} else {
-					print("[-] ");
-				}
-
-				print(" ["); print_dec(file_size); print(" bytes]  ");
-
-				print(name);
-
-				print_newline();
-				inode_i += 16;
-			} else {
-				null_files++;
-				inode_i += 16;
-				continue;
-			}
-		}
-		block_i++;
-	}	
+int file_create(const char *name, env_vars_t *env) {
+    (void)env; return !set_superblock() || esfs_create(current_fs(), name) ? 1 : 0;
 }
-
-// write an arbitrary amount of data to an existing file
-int file_write(uint8_t* name, uint8_t* data, int write_size, env_vars_t* env_vars_ptr) {
-	inode_t file_info = get_file_info(name);
-	uint32_t ptr_block_read[128];
-	uint32_t data_block_read[128];
-	uint8_t data_block_read_bytes[512];
-	int block_write_size = 0;
-	int total_write_size = 0;
-
-	if(file_info.valid != 1) {
-		return 0;
-	}
-	
-	if(!env_vars_ptr->last_allocated_block)
-		env_vars_ptr->last_allocated_block = superblock_block + superblock.inode_blocks;
-
-	// iterate through all the pointers in the inode
-	for(int ptr_i = 0; ptr_i < 14; ptr_i++)	{
-		// if pointer exists, read pointer block into memory and iterate through it
-		if(file_info.indirect_pointers[ptr_i]) {
-			read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
-
-			for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) {
-				// if a pointer in the pointer block exists, read it into memory and check if it is full
-				// --> if full, continue onto next pointer
-				// --> if not full, write data to it until either data ends (break) or data block fills up (continue onto next pointer)
-				if(ptr_block_read[ptr_block_i]) {
-					read_sectors_ATA_PIO(data_block_read, ptr_block_read[ptr_block_i], 1);
-
-					memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
-
-					if(data_block_read_bytes[511]) { // data block is full
-						if(ptr_block_read[ptr_block_i + 1]) continue;
-						else { // if no more data blocks exist, create one
-							ptr_block_read[ptr_block_i + 1] = allocate_data_block(env_vars_ptr);
-							write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
-							continue;
-						} 
-					} else { // data block is not full
-						int name_end; // first block in first pointer block also contains the file name, we need to check that in order
-									  // to not overwrite the file name
-						if(ptr_i == 0 && ptr_block_i == 0) name_end = 0;
-						if(ptr_i != 0 || ptr_block_i != 0) name_end = 1;
-
-						block_write_size = 0;
-
-						// iterate through the bytes of the data block
-						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
-							// if the name has already been passed, write data to any null byte
-							if(data_block_read_bytes[data_block_i] == 0 && name_end == 1) {
-								if(write_size > 0) {
-									data_block_read_bytes[data_block_i] = *data;
-									*data++;
-									block_write_size++;
-									total_write_size++;
-									write_size--;
-								} else break;
-							}
-							// if name has not been passed and there is a null byte, ignore it and set name_end = 1
-							// that way the next null byte will have data written to it
-							if(data_block_read_bytes[data_block_i] == 0 && name_end == 0) name_end = 1;
-						}
-							
-						// update the file size in the inode
-						file_info.size += block_write_size;
-						set_file_info(name, file_info);
-
-						// write the data that we stored in memory back to the disk
-						write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, data_block_read_bytes);
-
-						// if this is the last pointer in the pointer block and it is full, create a new pointer block
-						if(data_block_read_bytes[511] && ptr_block_i == 127) {
-							file_info.indirect_pointers[ptr_i] = allocate_data_block(env_vars_ptr);
-							// write those changes to the inode to the disk
-							set_file_info(name, file_info);
-						}
-						
-						// if there is no more data to be written, break from the loop
-						if(write_size <= 0) break;
-					}
-				} else {
-					ptr_block_read[ptr_block_i] = allocate_data_block(env_vars_ptr);
-					write_sectors_ATA_PIO(file_info.indirect_pointers[ptr_i], 1, ptr_block_read);
-					ptr_block_i--;
-				}
-			}
-		}
-		// if there is no more data to be written, break from the loop
-		if(write_size <= 0) break;
-	}
-	
-	// update the file size in the inode
-	file_info.size += write_size;
-	set_file_info(name, file_info);
-	save_superblock(env_vars_ptr);	
-	return total_write_size;
+int file_delete(const char *name, env_vars_t *env) {
+    (void)env; return !set_superblock() || esfs_delete(current_fs(), name) ? 1 : 0;
 }
-
-// reads a specified amount of a file's contents, starting at a specified offset to a specified location in memory
-// (read_size & read_offset are in 512 byte sectors)
-int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint32_t read_offset) {
-	inode_t file_info = get_file_info(name);
-
-	if(file_info.valid != 1)  {
-		print("File doesn't exist!"); print_newline();
-		return 2;
-	}
-
-	uint32_t ptr_block_read[128];
-	uint32_t data_block_read[128];
-	uint8_t data_block_read_bytes[512];
-
-	int ret_value;
-	if(file_info.size <= ((read_size * 512) + (read_offset * 512))) ret_value = 0;
-	else if(file_info.size > ((read_size * 512) + (read_offset * 512))) ret_value = 1;
-
-	// set up a pointer to a byte array in memory where the data will be read to
-	uint8_t* target = (uint8_t*) target_address;
-	int read_start = read_offset * 512;
-	int read_i = 0;
-	int target_i = 0;
-
-	// the filename is stored in the file contents separated from the actual contents by a null byte,
-	// this variable gets set to 1 when the first null byte is encountered	
-	int name_passed = 0;
-	if(read_offset > 0) name_passed = 1;
-
-	// check if the file actually exists
-	if(file_info.indirect_pointers[0]) {
-		// iterate through all indirect pointers in the inode	
-		for(int ptr_i = 0; ptr_i < 14; ptr_i++) {
-			if(file_info.indirect_pointers[ptr_i]) {
-				// read contents of pointer block into memory
-				read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
-				// iterate through all the pointers in the read pointer block
-				for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) {
-					// if a block exists, read it into memory and iterate through it
-					if(ptr_block_read[ptr_block_i]) {
-						read_sectors_ATA_PIO(data_block_read, ptr_block_read[ptr_block_i], 1);
-						memcpy(data_block_read_bytes, &data_block_read, sizeof(data_block_read));
-						for(int data_block_i = 0; data_block_i < 512; data_block_i++) {
-							// write file bytes to the target addess in memory
-							if(name_passed == 1) {
-								if(read_i > read_start) {
-									target[target_i] = data_block_read_bytes[data_block_i];
-									target_i++;
-								}
-
-								if(read_i >= (read_offset * 512) + (read_size * 512)) return ret_value;
-							}
-							// enables reading after the filename has been passed (so only the actual contents are read)
-							if(!data_block_read_bytes[data_block_i] && name_passed == 0) name_passed = 1;
-							read_i++;
-						}
-					}	
-				}			
-			}
-		}
-		return ret_value;
-	} else {
-		print("File doesn't exist!"); print_newline();	
-		return 2;
-	}
+int file_write(const char *name, const void *data, int bytes, env_vars_t *env) {
+    (void)env;
+    if (bytes < 0 || !set_superblock() || esfs_append(current_fs(), name, data, bytes)) return 0;
+    return bytes;
 }
-
-int file_delete(uint8_t* name, env_vars_t* env_vars_ptr) {
-	inode_t file_info = get_file_info(name);
-	static inode_t updated_file_info;
-	uint32_t ptr_block_read[128];
-
-	uint32_t smallest_block_index = 0;
-
-	// set up a static 512 array of null bytes
-	static uint8_t null_block[512];
-	for(int i = 0; i < 512; i++) null_block[i] = 0;
-
-	// check if the file actually exists
-	if(file_info.valid == 1) {
-		// delete records of the file in the inode blocks
-		updated_file_info.valid = 0;
-		updated_file_info.size = 0;
-		for(int i = 0; i < 14; i++) updated_file_info.indirect_pointers[i] = 0;
-		
-		set_file_info(name, updated_file_info);
-
-		// iterate through all the pointers
-		for(int ptr_i = 0; ptr_i < 14; ptr_i++) {
-			// read the data pointed to by vaid pointers into memory 
-			if(file_info.indirect_pointers[ptr_i]) {
-				read_sectors_ATA_PIO(ptr_block_read, file_info.indirect_pointers[ptr_i], 1);
-				
-				// delete all data from those data blocks
-				for(int ptr_block_i = 0; ptr_block_i < 128; ptr_block_i++) 
- 					if(ptr_block_read[ptr_block_i]) {
-						if(!smallest_block_index || ptr_block_read[ptr_block_i] < smallest_block_index) 
-							smallest_block_index = ptr_block_read[ptr_block_i];	
-						write_sectors_ATA_PIO(ptr_block_read[ptr_block_i], 1, null_block);
-					}
-			}
-		}
-		env_vars_ptr->last_allocated_block = smallest_block_index;
-		save_superblock(env_vars_ptr);
-		return 0;	
-	} else {
-		return 1;	
-	}
+int file_read(const char *name, void *target, uint32_t sectors, uint32_t offset) {
+    if (sectors > ESFS_MAX_FILE / 512 + 1 || offset > ESFS_MAX_FILE / 512 + 1 || !set_superblock()) return 2;
+    uint32_t bytes = sectors * 512, actual;
+    if (!target && bytes) return 2;
+    memset(target, 0, bytes);
+    if (esfs_read(current_fs(), name, target, offset * 512, bytes, &actual)) return 2;
+    inode_t in = get_file_info(name);
+    return in.size > offset * 512 + actual ? 1 : 0;
+}
+int file_replace(const char *name, const void *data, uint32_t bytes) {
+    return set_superblock() && !esfs_replace(current_fs(), name, data, bytes);
+}
+static int list_entry(void *arg, const char *name, const inode_t *in) {
+    esfs_t *fs = arg; uint8_t header[4] = {0}; uint32_t actual;
+    if (esfs_read(fs, name, header, 0, 4, &actual)) return ESFS_IO;
+    print(actual == 4 && header[0] == 0x7f && header[1] == 'E' && header[2] == 'L' && header[3] == 'F' ? "[x] " : "[-] ");
+    print(" ["); print_dec(in->size); print(" bytes]  "); print((char *)name); print_newline(); return 0;
+}
+void file_list(void) {
+    if (!set_superblock() || esfs_visit(current_fs(), list_entry, current_fs())) { print("Filesystem unavailable or corrupt."); print_newline(); }
 }

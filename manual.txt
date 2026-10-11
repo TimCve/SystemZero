@@ -108,14 +108,14 @@ multiple drives.
 
 OPTIONS:
 
-    > copy <source_file>:x <destination_file>:y 
+    > copy x:<source_file> y:<destination_file>
 
 will copy source_file located on the drive with index of x into a file called
 destination_file which will be located on drive with index of y.
 
 EXAMPLE USAGE:
 
-    > copy LICENSE:0 LICENSE_copy:1
+    > copy 0:LICENSE 1:LICENSE_copy
 
 will copy LICENSE from IDE0 to LICENSE_copy on IDE1.
 
@@ -259,6 +259,6 @@ will view LICENSE from the 10th line.
 
 KEYBINDINGS:
 pgup    scroll up
-pgup    scroll down
+pgdn    scroll down
 
 Thanks for reading the SystemZero manual.

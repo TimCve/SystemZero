@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "../shared/elf.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
 #include "drivers/io/graphics.h"
@@ -17,51 +18,33 @@ void sleep(int time) {
 	}
 }
 
-int execute(char* cmd, char* args_str, env_vars_t* env_vars_ptr) {
-	uint32_t phy_addr;	
-
-	select_drive(env_vars_ptr->system_drive);
-	uint8_t exe_check_buffer[512];
-	
-	if(file_read(cmd, exe_check_buffer, 1, 0) != 2) {
-		// check if the file is executable
-		if(exe_check_buffer[0] == 0x7F && exe_check_buffer[1] == 0x45 && exe_check_buffer[2] == 0x4C && exe_check_buffer[3] == 0x46) {
-			// allocate memory for program
-			uint32_t program_memory = malloc(50000, 1, &phy_addr);
-
-			// print("program memory: "); print_hex(program_memory); print_newline();
-
-			// read program into memory
-			int file_size = get_file_info(cmd).size;
-			file_read(cmd, program_memory, file_size / 512, 0);
-
-			// create a pointer to the program
-			uint32_t* program = program_memory;
-			
-			// create pointer to the program's main function (entry point)
-			int (*func)(env_vars_t* env_vars_ptr, char* input_buffer) = program_memory + program[6];
-		
-			// set free memory pointer environment variable
-			env_vars_ptr->free_mem_ptr = get_free_ptr();
-			
-			// execute program main function
-			int return_status = func(env_vars_ptr, args_str);
-
-			// clear out memory after program has finished execution
-			for(int i = 0; i < 50000; i++) program[i] = 0;
-
-			// reset the free memory pointer
-			set_free_ptr(get_free_ptr() - 54096);
-			env_vars_ptr->free_mem_ptr = get_free_ptr();
-
-			return return_status;
-		} else {
-			print("File is not executable!");
-			print_newline();
-
-			return 2;
-		}
-	}
+int execute(char *cmd, char *args, env_vars_t *env) {
+    uint8_t previous_drive = selected_ata_drive();
+    select_drive(env->system_drive);
+    inode_t info = get_file_info(cmd);
+    if (!info.valid) { print("Command not found or filesystem unavailable."); print_newline(); select_drive(previous_drive); return 2; }
+    uint32_t marker = get_free_ptr();
+    uint32_t sectors = (info.size + 511) / 512;
+    uint32_t source = malloc(sectors * 512, 1, 0);
+    int status = 2;
+    elf_plan_t plan;
+    if (!source || file_read(cmd, (void *)source, sectors, 0) == 2 ||
+        !elf_plan((void *)source, info.size, &plan)) {
+        print("Invalid executable or insufficient memory."); print_newline();
+    } else {
+        uint32_t memory = malloc(plan.size, 1, 0);
+        if (!memory || !elf_load((void *)source, info.size, &plan, (void *)memory, plan.size)) {
+            print("Unsupported executable or insufficient memory."); print_newline();
+        } else {
+            env->free_mem_ptr = get_free_ptr();
+            status = ((int (*)(env_vars_t *, char *))(memory + plan.entry))(env, args);
+            /* Each program has its own allocator state; collect its final marker. */
+            if (env->free_mem_ptr > get_free_ptr()) set_free_ptr(env->free_mem_ptr);
+        }
+    }
+    heap_release(marker); env->free_mem_ptr = get_free_ptr();
+    select_drive(previous_drive);
+    return status;
 }
 
 void kmain(env_vars_t* env_vars_ptr) {
@@ -87,12 +70,10 @@ void kmain(env_vars_t* env_vars_ptr) {
 	env_vars_ptr->system_drive = env_vars_ptr->selected_drive;
 
 	// intitialize filesystem
-	init_fs(env_vars_ptr);
-
-	// format system drive if necessary
-	if(check_disk_fs() == 0) {
-		format_disk();
-	}
+	if (!init_fs(env_vars_ptr)) {
+        print("System filesystem unavailable or corrupt. Format it explicitly from the host.");
+        print_newline();
+    }
 
 	// initialize timer
 	print("Initialising timer...");

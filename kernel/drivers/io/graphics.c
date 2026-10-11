@@ -1,14 +1,12 @@
 #include "graphics.h"
 
-int sqroot(uint32_t val) {
-	int counter = 1, sqroot = 1;
-
-	while(sqroot <= val) {
-		counter++;
-		sqroot = counter*counter;
-	}
-
-	return counter - 1;
+int sqroot(uint32_t value) {
+    uint32_t lo = 0, hi = 65536;
+    while (lo + 1 < hi) {
+        uint32_t mid = lo + (hi - lo) / 2;
+        if (mid <= value / mid) lo = mid; else hi = mid;
+    }
+    return lo;
 }
 
 int abs(int val) {

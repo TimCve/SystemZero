@@ -1,30 +1,17 @@
-#include <stdint.h>
-
-// superblock structure (16 bytes)
-typedef struct {
-	uint32_t magic;
-	uint32_t blocks;
-	uint32_t inode_blocks;
-	uint32_t inodes;
-	uint32_t disk_size;
-	uint32_t last_allocated_block;
-} superblock_t;
-
-// inode structure (64 bytes)
-typedef struct {
-	uint32_t valid;
-	uint32_t size;
-	uint32_t indirect_pointers[14];
-} inode_t;
-
-void init_fs(env_vars_t* env_vars_ptr);
-void set_superblock();
-void format_disk();
-int check_disk_fs();
-int file_create(char* name, env_vars_t* env_vars_ptr); // returns 1 if file exists, 0 if successfully created
-void file_list();
-inode_t get_file_info(uint8_t* name);
-void set_file_info(uint8_t* name, inode_t file_info);
-int file_write(uint8_t* name, uint8_t* data, int write_size, env_vars_t* env_vars_ptr); // returns total write size (0 if failed)
-int file_read(uint8_t* name, uint32_t* target_address, uint32_t read_size, uint32_t read_offset);
-int file_delete(uint8_t* name, env_vars_t* env_vars_ptr); // returns 0 if success, 1 if failure
+#ifndef SYSTEMZERO_FS_H
+#define SYSTEMZERO_FS_H
+#include "../../env_vars.h"
+#include "../../../shared/esfs.h"
+void fs_bind_env(env_vars_t *env);
+int init_fs(env_vars_t *env);
+int set_superblock(void);
+int format_disk(void);
+int check_disk_fs(void);
+int file_create(const char *name, env_vars_t *env);
+void file_list(void);
+inode_t get_file_info(const char *name);
+int file_write(const char *name, const void *data, int size, env_vars_t *env);
+int file_replace(const char *name, const void *data, uint32_t size);
+int file_read(const char *name, void *target, uint32_t sectors, uint32_t offset);
+int file_delete(const char *name, env_vars_t *env);
+#endif

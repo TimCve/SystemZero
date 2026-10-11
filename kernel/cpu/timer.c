@@ -3,7 +3,7 @@
 #include "../drivers/utils/ports.h"
 #include "../drivers/io/screen.h"
 
-uint32_t tick = 0;
+volatile uint32_t tick = 0;
 
 static void timer_cb(registers_t regs) {
 	tick++;

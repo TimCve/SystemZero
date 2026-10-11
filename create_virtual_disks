@@ -1,16 +1,15 @@
-#!/bin/sh
-
-mkdir virtual_disks
-rm virtual_disks/*.bin virtual_disks/*.vmdk
-
-vmkd_uuids=$(cat disk_uuids.txt)
-drive_i=1
-
-for uuid in $vmkd_uuids
-do
-	dd if=/dev/zero of="virtual_disks/drive_$drive_i.bin" bs=1024 count=102400
-	VBoxManage convertfromraw "virtual_disks/drive_$drive_i.bin" "virtual_disks/drive_$drive_i.vmdk" --format VMDK
-	VBoxManage internalcommands sethduuid "virtual_disks/drive_$drive_i.vmdk" $uuid
-	drive_i=$((drive_i+1))
+#!/bin/bash
+set -euo pipefail
+cd -- "$(dirname -- "$0")"
+make ESFS_raw_write
+mkdir -p virtual_disks
+for index in 1 2 3; do
+    image="virtual_disks/drive_$index.bin"
+    if [ -e "$image" ]; then
+        printf 'Keeping existing disk: %s\n' "$image"
+        continue
+    fi
+    truncate -s 100M "$image"
+    ./ESFS_raw_write --format "$image"
+    printf 'Created ESFS disk: %s\n' "$image"
 done
-

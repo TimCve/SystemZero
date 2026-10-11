@@ -59,6 +59,8 @@ int scroll_terminal() {
 
 // print single character at cursor position
 int print_char(char ch) {
+    if (ch == '\n') return print_newline();
+    if (ch == '\r') return 0;
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
 
@@ -104,17 +106,9 @@ void print_hex(int num) {
 
 // new line & carriage return
 int print_newline() {
-	char* video_memory = (char*) VIDEO_ADDRESS;
-	
-	set_cursor_position(get_cursor_position() + (COLS * 2));
-
-	int index;
-
-	for(index = 0; index <= get_cursor_position(); index += (COLS * 2));
-		set_cursor_position(get_cursor_position() - ((COLS * 2) - (index - get_cursor_position())));
-
-	if(scrolling_enabled == 1) return scroll_terminal();
-	else return 0;
+    int row = get_cursor_position() / (COLS * 2);
+    set_cursor_position((row + 1) * COLS * 2);
+    return scrolling_enabled ? scroll_terminal() : 0;
 }
 
 char char_under_cursor() {

@@ -1,4 +1,6 @@
 #include "../kernel/env_vars.h"
+#include "../kernel/drivers/disk/ata.h"
+#include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
 #include "../kernel/libc/strings.h"
 #include <stdint.h>

@@ -1,53 +1,116 @@
 # SystemZero
-A basic operating system project built entirely from scratch.
 
-Official website: https://z3r0flag.github.io/SysZero
+A small 32-bit operating system with an ESFS filesystem and a command shell.
 
-### Dependencies for building from source
+## Build and run in QEMU
 
-`bash, gcc, nasm, gnu make, gnu ld, (optionally virtualbox to convert .bin drive to .vmdk)`
+On Debian, install the build tools and QEMU:
 
-To build, simply run this command in the project root:
-`./automake`
+```sh
+sudo apt update
+sudo apt install build-essential binutils nasm python3 qemu-system-x86 qemu-system-gui
+make -j4 all
+make run
+```
 
-### Makefile rules
+The build installs all bundled commands, `LICENSE`, and `manual.txt`. At the
+`IDE0>` prompt, type `list`. `./automake` runs the same build and optionally
+imports more files when used interactively.
+When VirtualBox is installed, `./automake` also updates the VMDK image.
 
-- `make all` - builds the operating system disk image (100MB) in raw binary mode only
-- `make raw` - (same as make all) builds the operating system disk image (100MB) in raw binary mode only
-- `make convert_vmdk` - converts the raw binary OS image into vmdk mode, leaving the raw binary image
-- `make clean` - clean up build files and executables
-- `make run` - runs the system in QEMU (no compilation/building is done)
-- `make run_gtk` - same as above but uses gtk display with gl acceleration
-- `make run_sdl` - same as above but uses sdl display with gl acceleration
-- `make ESFS_raw_write` - builds the program required for writing files from host machine to ESFS on raw binary disk
+The boot path uses BIOS and IDE disks. The supplied QEMU commands provide
+64 MiB of RAM; the loader requires at least 16 MiB. The allocator uses a checked
+region from 1 MiB to 16 MiB. UEFI boot and physical hardware have not been tested.
 
-### How to copy files from host machine to OS virtual hard disk
+## Keep files between builds
 
-I have written a program that is able to copy the exact bytes of a file on your host machine to the virtual hard disk of the OS, to compile it view the "Makefile rules" section. The program is only able to write data to a raw binary virtual disk (os-image.bin). DO NOT TRY TO WRITE TO os-image.vmdk.
+`make all` updates boot code and bundled files while preserving other ESFS files.
+The update is staged and checked before replacing `os-image.bin`; the previous
+image is saved as `os-image.bin.bak`. Stop QEMU before building or importing files.
+An image with an invalid filesystem is rejected rather than formatted.
 
-Usage:
-- `make clean raw ESFS_raw_write`
-- `./ESFS_raw_write os-image.bin file_name_in_ESFS file_name_on_local_machine`
-- `make convert_vmdk`
+`make clean` removes compiled artifacts and keeps disk images. To create a
+fresh image, move the existing image aside and run `make all` again.
 
-You will now be able to either boot the .bin image in QEMU or the .vmdk image in Virtualbox/VMware (if you have those installed) and it will contain the file(s) which you have copied onto the disk. Keep in mind that once a disk is converted to .vmdk mode, it can no longer be written to by ESFS_raw_write.
+Additional targets:
 
-### Writing and compiling an executable to run on the OS
+- `make programs`: compile the bundled commands without updating the image.
+- `make run_gtk` / `make run_sdl`: run QEMU with the selected display backend.
+- `make test`: run host regression checks with AddressSanitizer and UBSan.
+- `make test-qemu`: boot a disposable image and exercise the guest commands.
+- `python3 tests/qemu_performance.py`: time filesystem commands on a disposable image.
+- `make convert_vmdk`: convert the raw image for VirtualBox (requires `VBoxManage`).
 
-The kernel shell is an interface for executing binaries stored as files on the virtual hard disk. (For a C program to be automatically built and written onto the virtual disk by the Automake script, put the .c source file in external_programs)
+## Copy files from the host
 
-- Write the program in C, you will be able to include any kernel API that is available. View the header files inside the kernel directory to see the options.
+```sh
+make ESFS_raw_write
+./ESFS_raw_write --replace os-image.bin guest-name path/to/source
+./ESFS_raw_write --append os-image.bin guest-name path/to/more-data
+./ESFS_raw_write --extract os-image.bin guest-name path/to/output
+./ESFS_raw_write --check os-image.bin
+```
 
-- Compilation can be done through the simple `compile_program` script in the format `../compile_program <input_file.c> <output_file>` **it is important that you execute the script while being in the external_programs directory.** The script will compile your program together will all available kernel API.
+Without an option, the writer appends, preserving the original CLI behavior.
+Names contain 1–511 bytes; each file can contain up to 916,992 payload bytes.
+Files are binary-safe, including embedded zero bytes. Both host and guest use
+`shared/esfs.c`. File sizes and read offsets refer to payload bytes, excluding
+the filename. Guest `file_read` takes sector counts and offsets and pads the
+last sector with zeroes.
 
-- Writing your program to the OS virtual disk can be done in the same way as writing a standard text file, the procedure is described in the "How to copy files from host machine to OS virtual hard disk" section.
+New disks must be formatted explicitly:
 
-### Automake script
+```sh
+truncate -s 100M new-disk.bin
+./ESFS_raw_write --format new-disk.bin
+```
 
-The automake script is easy to use, it will build the operating system as well as all .c files in external_programs/ and write the executable binaries to the operating system's virtual drive, an option will be provided to write any additional files to the disk before conversion to VMDK format.
+`--format` erases filesystem metadata and files while preserving the first 200
+sectors reserved for boot code. The writer accepts sector-aligned raw disks
+smaller than 4 GiB and rejects missing inputs, oversized files, corrupt metadata,
+I/O failures, and images locked by QEMU. Do not pass a VMDK to the raw writer.
 
-### Multiple drives
+Legacy images made by the original host writer are checked and mounted with
+their overlapping final metadata sector reserved for data. The first write
+migrates the superblock to the corrected format. Existing damaged metadata is
+reported; the migration cannot repair previously corrupted file contents.
 
-There exist two scripts `create_create_virtual_disks` and `run_with_extra_disks`. (The latter is just a single long qemu command to virtualize SystemZero with 4 virtual IDE drives). The first script creates 3 virtual IDE drives (the first one is the boot drive). These can be "connected" to any of the 4 IDE busses and accessed within SystemZero.
+Replacement writes keep the old file until all replacement data has been
+written and the new inode is published. This requires room for both versions.
+ESFS has no journal or power-loss recovery guarantee.
 
-`run_with_extra_disks gtk` & `run_with_extra_disks sdl` options are also available. See Makefile rules to see what those options do.
+The guest validates each drive on its first mount, then shares its allocation
+map and metadata cache across commands. Metadata and contiguous file reads use
+multiple-sector transfers. File changes update the shared cache immediately;
+writes are flushed before publishing new file metadata and after publication.
+Deleting a file flushes its removal before its blocks can be reused. Formatting
+invalidates the drive's cache and performs a fresh validation.
+
+## Compile guest programs
+
+Put a C source file in `external_programs/` and use:
+
+```sh
+./compile_program hello.c hello.elf
+./ESFS_raw_write --replace os-image.bin hello external_programs/hello.elf
+```
+
+Guest programs have `int main(env_vars_t *env, char *args)` and can include
+kernel API headers. The build links freestanding ELF32 position-independent
+executables without a Linux dynamic interpreter. The loader validates load
+segments, clears BSS, applies supported relative relocations, and restores the
+saved heap position when a command returns. Recompile custom executables after
+kernel API changes; commands now share filesystem state through `env_vars_t`.
+Programs using raw ATA writes directly must call `ata_flush()` for durability.
+
+Header dependencies are tracked automatically. Object files have distinct
+paths, parallel builds are supported, and duplicate symbol definitions fail
+linking. The older dependency-inference and loader-padding scripts are no longer
+part of the build.
+
+## Multiple drives
+
+`./create_virtual_disks` creates three additional raw disks and preserves
+existing disks. `./run_with_extra_disks` attaches them as IDE1, IDE2, and IDE3.
+Use `drives`, `drive 1`, and `list` in the guest; `manual.txt` describes the
+bundled commands. The guest `format` command formats the selected disk.
