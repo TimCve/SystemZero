@@ -93,6 +93,12 @@ int file_read(const char *name, void *target, uint32_t sectors, uint32_t offset)
 int file_replace(const char *name, const void *data, uint32_t bytes) {
     return set_superblock() && !esfs_replace(current_fs(), name, data, bytes);
 }
+int file_read_bytes(const char *name, void *target, uint32_t bytes, uint32_t offset) {
+    uint32_t actual;
+    if (bytes > ESFS_MAX_FILE || !set_superblock() ||
+        esfs_read(current_fs(), name, target, offset, bytes, &actual)) return -1;
+    return actual;
+}
 static int list_entry(void *arg, const char *name, const inode_t *in) {
     esfs_t *fs = arg; uint8_t header[4] = {0}; uint32_t actual;
     if (esfs_read(fs, name, header, 0, 4, &actual)) return ESFS_IO;

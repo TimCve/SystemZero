@@ -39,6 +39,11 @@ class RegressionChecks(unittest.TestCase):
         self.compile(binary, "tests/core_checks.c", "shared/esfs.c", "shared/elf.c")
         self.run_checked(binary)
 
+    def test_native_compiler_diagnostics_bounds_and_elf_output(self):
+        binary = self.directory / "compiler"
+        self.compile(binary, "tests/compiler_checks.c", "shared/compiler.c", "shared/elf.c")
+        self.run_checked(binary, ROOT / "tests/compiler_language.sz")
+
     def test_ata_transfer_and_timeouts(self):
         binary = self.directory / "ata"
         self.compile(binary, "tests/ata_checks.c", "kernel/drivers/disk/ata.c", extra=("-DATA_POLL_LIMIT=1000",))
@@ -95,12 +100,32 @@ class RegressionChecks(unittest.TestCase):
         source.write_bytes(bytes(1024 * 1024 + 1))
         cases = [(disk, "missing", self.directory / "not-found"),
                  (disk, "large", source), (disk, "n" * 512, source),
-                 (disk, "", source), (disk,), ("--bogus", disk)]
+                 (disk, "", source), (disk,), ("--bogus", disk),
+                 ("--delete", disk), ("--delete", disk, "")]
         for args in cases:
             result = subprocess.run([str(self.writer), *(str(a) for a in args)], capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 1, result.stderr.decode())
             self.assertNotIn(b"Sanitizer", result.stderr)
             self.assertEqual(disk.read_bytes(), original)
+
+    def test_host_delete_preserves_other_files_and_is_repeatable(self):
+        disk = self.new_disk("delete.bin")
+        source = self.directory / "delete-input"
+        payload = bytes(range(256)) * 300
+        source.write_bytes(payload)
+        self.run_checked(self.writer, "--replace", disk, "removed", source)
+        self.run_checked(self.writer, "--replace", disk, "kept", source)
+        self.run_checked(self.writer, "--delete", disk, "removed")
+        self.run_checked(self.writer, "--check", disk)
+        output = self.directory / "delete-output"
+        self.run_checked(self.writer, "--extract", disk, "kept", output)
+        self.assertEqual(output.read_bytes(), payload)
+        result = subprocess.run([str(self.writer), "--extract", str(disk), "removed", str(output)], capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"file not found", result.stderr)
+        before = disk.read_bytes()
+        self.run_checked(self.writer, "--delete", disk, "removed")
+        self.assertEqual(disk.read_bytes(), before)
 
     def test_host_disk_full_preserves_replaced_file(self):
         disk = self.new_disk("full.bin", 220)
@@ -139,12 +164,19 @@ class RegressionChecks(unittest.TestCase):
             result = subprocess.run(["make", "-j4", "all"], cwd=project, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(hashlib.sha256(disk.read_bytes()).digest(), before)
+            # Upgrade an image containing the retired command, with an orphan ELF on the host.
+            self.run_checked(project / "ESFS_raw_write", "--replace", disk, "chain", project / "external_programs/list.elf")
+            shutil.copyfile(project / "external_programs/list.elf", project / "external_programs/chain.elf")
+            before = hashlib.sha256(disk.read_bytes()).digest()
             os.utime(project / "kernel/env_vars.h", None)
             result = subprocess.run(["make", "-j4", "all"], cwd=project, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             output = Path(temp) / "restored"
             self.run_checked(project / "ESFS_raw_write", "--extract", disk, "my-file", output)
             self.assertEqual(source.read_bytes(), output.read_bytes())
+            result = subprocess.run([str(project / "ESFS_raw_write"), "--extract", str(disk), "chain", str(output)], capture_output=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"file not found", result.stderr)
             self.assertEqual(hashlib.sha256((project / "os-image.bin.bak").read_bytes()).digest(), before)
             result = subprocess.run(["make", "clean"], cwd=project, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)

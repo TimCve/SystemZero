@@ -13,11 +13,13 @@ BOOT_SOURCES := boot/loader.c kernel/drivers/disk/ata.c kernel/drivers/io/screen
 BOOT_OBJECTS := $(patsubst %.c,build/boot/%.o,$(BOOT_SOURCES)) build/boot/entry.o
 PROGRAM_SOURCES := $(wildcard external_programs/*.c)
 PROGRAMS := $(PROGRAM_SOURCES:.c=.elf)
-DEPS := $(KERNEL_OBJECTS:.o=.d) $(BOOT_OBJECTS:.o=.d) $(PROGRAM_SOURCES:%.c=build/obj/%.d) build/obj/kernel/program_entry.d
+EXAMPLES := $(wildcard examples/*.sz)
+DEPS := $(KERNEL_OBJECTS:.o=.d) $(BOOT_OBJECTS:.o=.d) $(PROGRAM_SOURCES:%.c=build/obj/%.d) build/obj/kernel/program_entry.d build/obj/shared/compiler.d
 .DEFAULT_GOAL := all
 .PHONY: all raw programs run run_gtk run_sdl clean convert_vmdk test test-qemu
 all raw: os-image.bin
 programs: $(PROGRAMS)
+external_programs/cc.elf: build/obj/shared/compiler.o
 
 build/obj/%.o: %.c Makefile
 	mkdir -p $(dir $@)
@@ -62,7 +64,7 @@ build/bootloader/boot_sect.bin: boot/boot_sect.asm $(wildcard boot/include/*.asm
 ESFS_raw_write: ESFS_raw_write.c shared/esfs.c shared/esfs.h
 	$(HOSTCC) -std=c11 -O2 -Wall -Wextra -Werror ESFS_raw_write.c shared/esfs.c -o $@
 
-os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/kernel/kernel.elf $(PROGRAMS) ESFS_raw_write LICENSE manual.txt scripts/build_image.py
+os-image.bin: build/bootloader/boot_sect.bin build/bootloader/loader.bin build/kernel/kernel.elf $(PROGRAMS) $(EXAMPLES) ESFS_raw_write LICENSE manual.txt docs/language.md scripts/build_image.py
 	$(PYTHON) scripts/build_image.py $@
 
 os-image.vmdk: os-image.bin
@@ -83,8 +85,9 @@ clean:
 
 test: ESFS_raw_write
 	$(PYTHON) -m unittest discover -s tests -v
-test-qemu: all build/tests/large.elf
+test-qemu: all build/tests/large.elf build/tests/nested.elf
 	$(PYTHON) tests/qemu_smoke.py
+	$(PYTHON) tests/qemu_compiler.py
 
 .SECONDARY:
 -include $(DEPS) $(wildcard build/obj/tests/*.d)

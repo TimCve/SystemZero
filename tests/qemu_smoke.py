@@ -106,6 +106,25 @@ class Guest:
             elif char == '"': self.key("shift", "2")
             elif char == "@": self.key("shift", "apostrophe")
             elif char == "~": self.key("shift", "backslash")
+            elif char == "\n": self.key("ret")
+            elif char == "\t": self.key("tab")
+            elif char == "(": self.key("shift", "9")
+            elif char == ")": self.key("shift", "0")
+            elif char == "{": self.key("shift", "bracket_left")
+            elif char == "}": self.key("shift", "bracket_right")
+            elif char == "[": self.key("bracket_left")
+            elif char == "]": self.key("bracket_right")
+            elif char == ";": self.key("semicolon")
+            elif char == "=": self.key("equal")
+            elif char == "+": self.key("shift", "equal")
+            elif char == "*": self.key("shift", "8")
+            elif char == "/": self.key("slash")
+            elif char == "<": self.key("shift", "comma")
+            elif char == ">": self.key("shift", "dot")
+            elif char == "!": self.key("shift", "1")
+            elif char == ",": self.key("comma")
+            elif char == "\\": self.key("less")
+            elif char == "'": self.key("apostrophe")
             else: raise ValueError(char)
         if submit:
             self.key("ret")
@@ -144,7 +163,7 @@ class Guest:
             self.process.stdin.close(); self.process.stdout.close(); self.log.close()
 
 def main():
-    subprocess.run(["make", "build/tests/large.elf"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["make", "build/tests/large.elf", "build/tests/nested.elf"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="systemzero-qemu-") as scratch:
         image = Path(scratch) / "disk.bin"
         shutil.copyfile(ROOT / "os-image.bin", image)
@@ -163,6 +182,7 @@ def main():
         wrapping = Path(scratch) / "wrapping"
         wrapping.write_bytes(b"a" * (COLS - 1) + b"bcd")
         for name, source in (("large", ROOT / "build/tests/large.elf"), ("binary", binary),
+                             ("nested", ROOT / "build/tests/nested.elf"),
                              ("invalid", invalid), ("editing", editable), ("multiline", multiline),
                              ("wrapping", wrapping)):
             subprocess.run([writer, "--replace", str(image), name, str(source)], check=True)
@@ -188,8 +208,10 @@ def main():
                     assert value == (0xffffff if ink else 0x0000aa)
             initial_heap = guest.heap_pointer()
             screen = guest.run("list")
-            for name in ("chain", "copy", "list", "read", "manual.txt"):
+            for name in ("copy", "list", "read", "manual.txt"):
                 assert name in screen, screen
+            assert "chain" not in screen, screen
+            guest.run("chain", "2 -> exit status")
             guest.run("drives")
             guest.run("drive 3", "1 -> exit status")
             guest.run("touch smoke.txt")
@@ -267,7 +289,7 @@ def main():
             guest.wait_for("PgUp/PgDn: scroll")
             guest.key("esc"); guest.wait_for("IDE0>")
             print("PASS guest: text editor, binary editor, viewer", flush=True)
-            guest.run('chain $touch nested.txt$del nested.txt$"nested-ok"')
+            assert "nested-ok" in guest.run("nested")
             assert "nested.txt" not in guest.run("list")
             guest.run("drawline 10 10 20 10 14")
             state = guest.terminal_state()

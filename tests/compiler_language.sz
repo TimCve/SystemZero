@@ -1,0 +1,74 @@
+int global = 7;
+char label[] = "ok";
+int later(int);
+
+int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+int bump() { global++; return 1; }
+int next() { return global++; }
+int pair(int a, int b) { return a * 10 + b; }
+int eight(int a, int b, int c, int d, int e, int f, int g, int h) {
+    return a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8;
+}
+char wrap(int n) { return n; }
+char *pick(char *p) { return p + 1; }
+void say(char *s) { print(s); return; }
+int main(char *args) {
+    if (eight(1, 2, 3, 4, 5, 6, 7, 8) != 204) return 39;
+    if (wrap(511) != 255 || pick(label)[0] != 'k') return 40;
+    global = 1;
+    if (pair(next(), next()) != 12) return 41;
+    global = 7;
+    if (strlen(args) < 1) return 10;
+    if (factorial(6) != 720 || later(3) != 9) return 11;
+    if (2 + 3 * 4 != 14 || (2 + 3) * 4 != 20) return 12;
+    if (-17 / 5 != -3 || -17 % 5 != -2) return 13;
+    if ((-8 >> 1) != -4 || (3 << 2) != 12) return 14;
+    if ((5 & 3) != 1 || (5 | 2) != 7 || (5 ^ 3) != 6 || ~0 != -1) return 15;
+    if (!(0 == 0) || !('A' == 65) || (char)257 != 1) return 16;
+    if (sizeof(int) != 4 || sizeof(char) != 1 || sizeof(char*) != 4) return 17;
+    int a = 3, b = 4;
+    a += b; a *= 2; a -= 3; a /= 2; a %= 4;
+    if (a != 1) return 18;
+    if (a++ != 1 || ++a != 3 || a-- != 3 || --a != 1) return 19;
+    { int a = 99; if (a != 99) return 20; }
+    if (a != 1) return 21;
+    if (0 && bump()) return 22;
+    if (!(1 || bump()) || global != 7) return 23;
+    if ((2 && 3) != 1 || (0 || 9) != 1) return 24;
+    int i = 0, total = 0;
+    while (i < 10) {
+        i++;
+        if (i == 2) continue;
+        if (i == 6) break;
+        total += i;
+    }
+    if (total != 13) return 25;
+    int values[4]; int *p = values;
+    p[0] = 10; *(p + 1) = 20; p++; *p += 2;
+    if (values[0] != 10 || values[1] != 22 || p - values != 1) return 26;
+    if (*(&a) != 1 || &values[0] != values) return 27;
+    char bytes[8]; bytes[0] = 255; bytes[1] = 'Z'; bytes[2] = 0;
+    if (bytes[0] != 255 || bytes[1] != 90) return 28;
+    char *memory = alloc(32);
+    if (memory == 0) return 29;
+    memset(memory, 0, 32); memcpy(memory, label, 3);
+    if (strlen(memory) != 2 || memory[0] != 'o' || memory[1] != 'k') return 30;
+    if (file_write("compiler-data", bytes, 3) != 0 || file_size("compiler-data") != 3) return 31;
+    if (file_read("compiler-data", memory, 2, 1) != 2 || memory[0] != 'Z' || memory[1] != 0) return 32;
+    if (file_delete("compiler-data") != 0 || file_size("compiler-data") != -1) return 33;
+    if (file_create("compiler-data") != 0 || file_size("compiler-data") != 0) return 34;
+    if (file_delete("compiler-data") != 0) return 35;
+    if (execute("touch compiler-nested") != 0 || execute("del compiler-nested") != 0) return 36;
+    if (screen_rows() < 25 || screen_columns() < 80 || sleep(1) != 0) return 37;
+    if (set_color(get_color()) != 0) return 38;
+    say("compiler-language-ok\n");
+    print_dec(-2147483648); newline();
+    print_hex(0xffffffff); newline();
+    // Return with an unmatched batch; the shell must still resume rendering.
+    begin_update();
+    return 0;
+}
+int later(int n) { return n * n; }

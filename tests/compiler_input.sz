@@ -1,0 +1,15 @@
+int main() {
+    char buffer[32];
+    print("Input: ");
+    int count = readline(buffer, 32);
+    if (count < 0) {
+        print("input-cancelled\n");
+        return 0;
+    }
+    print("Text: "); print(buffer); newline();
+    print("Key: ");
+    int key = getchar();
+    print_dec(key); newline();
+    print("input-ok\n");
+    return 0;
+}

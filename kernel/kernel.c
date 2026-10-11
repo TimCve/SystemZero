@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "sys_api.h"
 #include "../shared/elf.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
@@ -20,8 +21,12 @@ void sleep(int time) {
 
 int execute(char *cmd, char *args, env_vars_t *env) {
     uint8_t previous_drive = selected_ata_drive();
-    select_drive(env->system_drive);
+    /* User executables live on the working drive; bundled commands are a fallback. */
+    select_drive(env->selected_drive);
     inode_t info = get_file_info(cmd);
+    if (!info.valid && env->selected_drive != env->system_drive) {
+        select_drive(env->system_drive); info = get_file_info(cmd);
+    }
     if (!info.valid) { print("Command not found or filesystem unavailable."); print_newline(); select_drive(previous_drive); return 2; }
     uint32_t marker = get_free_ptr();
     uint32_t sectors = (info.size + 511) / 512;
@@ -38,6 +43,10 @@ int execute(char *cmd, char *args, env_vars_t *env) {
         } else {
             env->free_mem_ptr = get_free_ptr();
             status = ((int (*)(env_vars_t *, char *))(memory + plan.entry))(env, args);
+            /* Native compiler output calls the kernel without program_start(). */
+            screen_bind_env(env);
+            if (env->terminal) ((terminal_t *)env->terminal)->updates = 0;
+            set_scrolling(1); screen_cursor_visible(1); set_term_color(env->term_color);
             /* Each program has its own allocator state; collect its final marker. */
             if (env->free_mem_ptr > get_free_ptr()) set_free_ptr(env->free_mem_ptr);
         }
@@ -49,6 +58,7 @@ int execute(char *cmd, char *args, env_vars_t *env) {
 
 void kmain(env_vars_t* env_vars_ptr) {
 	screen_init(env_vars_ptr);
+	sys_api_init(env_vars_ptr);
 	set_term_color(env_vars_ptr->term_color);
 
 	// actual kernel starts here

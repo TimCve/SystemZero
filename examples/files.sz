@@ -1,0 +1,14 @@
+// File sizes, read counts, and offsets are bytes.
+int main() {
+    char buffer[128];
+    char *message = "Created inside SystemZero.\n";
+    if (file_write("message.txt", message, strlen(message)) != 0) {
+        print("Cannot write message.txt\n");
+        return 1;
+    }
+    int count = file_read("message.txt", buffer, 127, 0);
+    if (count < 0) return 1;
+    buffer[count] = 0;
+    print(buffer);
+    return 0;
+}

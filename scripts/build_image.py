@@ -55,10 +55,17 @@ def main():
             output.seek(512); output.write(loader)
             output.seek(63 * 512); output.write(struct.pack("<3I", 0x535A4B31, 64, len(kernel)))
             output.seek(64 * 512); output.write(kernel)
-        for program in sorted(Path("external_programs").glob("*.elf")):
+        # Retired bundled commands are removed while unrelated guest files survive.
+        call(ROOT / "ESFS_raw_write", "--delete", staged, "chain")
+        # Match the build's source list; stale ELF artifacts must not resurrect commands.
+        for source in sorted(Path("external_programs").glob("*.c")):
+            program = source.with_suffix(".elf")
             call(ROOT / "ESFS_raw_write", "--replace", staged, program.stem, program)
         for name in ("LICENSE", "manual.txt"):
             call(ROOT / "ESFS_raw_write", "--replace", staged, name, name)
+        call(ROOT / "ESFS_raw_write", "--replace", staged, "language.txt", "docs/language.md")
+        for source in sorted(Path("examples").glob("*.sz")):
+            call(ROOT / "ESFS_raw_write", "--replace", staged, source.name, source)
         call(ROOT / "ESFS_raw_write", "--check", staged)
         if image.exists():
             backup = image.with_name(image.name + ".bak")

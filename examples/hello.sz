@@ -1,0 +1,16 @@
+// Compile in SystemZero: cc hello.sz hello
+int square(int n) {
+    return n * n;
+}
+
+int main() {
+    print("Hello from a program compiled inside SystemZero!\n");
+    int i = 1;
+    while (i <= 5) {
+        print_dec(square(i));
+        putchar(' ');
+        i++;
+    }
+    newline();
+    return 0;
+}

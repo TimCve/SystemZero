@@ -13,5 +13,6 @@ inode_t get_file_info(const char *name);
 int file_write(const char *name, const void *data, int size, env_vars_t *env);
 int file_replace(const char *name, const void *data, uint32_t size);
 int file_read(const char *name, void *target, uint32_t sectors, uint32_t offset);
+int file_read_bytes(const char *name, void *target, uint32_t bytes, uint32_t offset);
 int file_delete(const char *name, env_vars_t *env);
 #endif

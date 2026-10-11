@@ -40,6 +40,7 @@ offsets, and an ASCII column; Escape cancels its byte-entry prompt.
 ## Keep files between builds
 
 `make all` updates boot code and bundled files while preserving other ESFS files.
+Retired bundled commands, including `chain`, are removed during the update.
 The update is staged and checked before replacing `os-image.bin`; the previous
 image is saved as `os-image.bin.bak`. Stop QEMU before building or importing files.
 An image with an invalid filesystem is rejected rather than formatted.
@@ -67,10 +68,12 @@ make ESFS_raw_write
 ./ESFS_raw_write --replace os-image.bin guest-name path/to/source
 ./ESFS_raw_write --append os-image.bin guest-name path/to/more-data
 ./ESFS_raw_write --extract os-image.bin guest-name path/to/output
+./ESFS_raw_write --delete os-image.bin guest-name
 ./ESFS_raw_write --check os-image.bin
 ```
 
 Without an option, the writer appends, preserving the original CLI behavior.
+Deleting an absent name succeeds, so cleanup can be repeated safely.
 Names contain 1–511 bytes; each file can contain up to 916,992 payload bytes.
 Files are binary-safe, including embedded zero bytes. Both host and guest use
 `shared/esfs.c`. File sizes and read offsets refer to payload bytes, excluding
@@ -106,6 +109,26 @@ Deleting a file flushes its removal before its blocks can be reused. Formatting
 invalidates the drive's cache and performs a fresh validation.
 
 ## Compile guest programs
+
+Inside SystemZero, use the bundled compiler and source examples:
+
+    cc hello.sz hello
+    hello
+
+Write your own source with `touch` and `edit`, then run `cc SOURCE OUTPUT`.
+The compiler emits native ELF32 programs that call a versioned kernel API for
+printing, files, memory, keyboard input, and graphics. Compilation errors report
+line/column locations and preserve existing output. Source and output use the
+selected drive; commands are searched there before falling back to the system
+drive. `hello.sz`, `files.sz`, and `draw.sz` are installed with the build.
+The same language reference is installed as `language.txt` for `view language.txt`.
+
+See [the language and kernel API reference](docs/language.md) for supported
+syntax, examples, signatures, and limits. This is a C-like subset with functions,
+arrays, pointers, conditionals, and loops; includes, full C compatibility, and
+separate library/object linking are not implemented.
+
+For host-built C programs, use the existing GCC workflow.
 
 Put a C source file in `external_programs/` and use:
 

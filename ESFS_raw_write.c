@@ -35,19 +35,20 @@ static const char *error_name(int rc) {
     }
 }
 int main(int argc, char **argv) {
-    int format = 0, extract = 0, check = 0, replace = 0, base = 1, rc = ESFS_INVALID;
+    int format = 0, extract = 0, check = 0, replace = 0, delete = 0, base = 1, rc = ESFS_INVALID;
     if (argc > 1 && argv[1][0] == '-') {
         format = !strcmp(argv[1], "--format"); extract = !strcmp(argv[1], "--extract");
         check = !strcmp(argv[1], "--check"); replace = !strcmp(argv[1], "--replace");
-        if (!format && !extract && !check && !replace && strcmp(argv[1], "--append")) goto usage;
+        delete = !strcmp(argv[1], "--delete");
+        if (!format && !extract && !check && !replace && !delete && strcmp(argv[1], "--append")) goto usage;
         base++;
     }
-    if (argc != base + ((format || check) ? 1 : 3)) goto usage;
+    if (argc != base + ((format || check) ? 1 : delete ? 2 : 3)) goto usage;
     const char *image = argv[base], *name = (format || check) ? 0 : argv[base + 1];
     FILE *disk = 0, *source = 0, *output = 0; uint8_t *data = 0, *map = 0, *cache = 0;
     uint32_t size = 0;
     if (name && (!*name || strlen(name) > ESFS_MAX_NAME)) { fprintf(stderr, "Filename must contain 1..511 bytes.\n"); return 1; }
-    if (!format && !extract && !check) {
+    if (!format && !extract && !check && !delete) {
         source = fopen(argv[base + 2], "rb");
         if (!source) { perror(argv[base + 2]); return 1; }
         struct stat input;
@@ -77,6 +78,11 @@ int main(int argc, char **argv) {
                  .read_many = read_sectors, .sync = sync_disk};
     rc = format ? esfs_format(&fs) : esfs_mount(&fs);
     if (rc || format || check) goto done;
+    if (delete) {
+        rc = esfs_delete(&fs, name);
+        if (rc == ESFS_NOT_FOUND) rc = ESFS_OK; /* Cleanup can safely run on every build. */
+        goto done;
+    }
     if (extract) {
         inode_t in; rc = esfs_find(&fs, name, &in, 0); if (rc) goto done;
         data = malloc(in.size ? in.size : 1); if (!data) { rc = ESFS_IO; goto done; }
@@ -105,6 +111,7 @@ int main(int argc, char **argv) {
  usage:
     fprintf(stderr, "Usage: %s [--append|--replace] IMAGE NAME SOURCE\n"
                     "       %s --extract IMAGE NAME OUTPUT\n"
-                    "       %s --format IMAGE\n       %s --check IMAGE\n", argv[0], argv[0], argv[0], argv[0]);
+                    "       %s --delete IMAGE NAME\n"
+                    "       %s --format IMAGE\n       %s --check IMAGE\n", argv[0], argv[0], argv[0], argv[0], argv[0]);
     return 1;
 }

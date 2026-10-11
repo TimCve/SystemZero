@@ -1,0 +1,11 @@
+int main() {
+    clear();
+    begin_update();
+    put_text(2, 2, "Native graphics from SystemZero source code", 30);
+    put_cell(4, 2, '*', 31);
+    end_update();
+    draw_pixel(400, 60, 12);
+    draw_line(20, 80, 780, 560, 14);
+    draw_line(20, 560, 780, 80, 10);
+    return 0;
+}

@@ -2,7 +2,7 @@
 #define SYSTEMZERO_ENV_VARS_H
 #include <stdint.h>
 
-typedef struct {
+typedef struct env_vars {
 	uint32_t free_mem_ptr;
 	uint8_t system_drive;
 	uint8_t selected_drive;
@@ -11,6 +11,7 @@ typedef struct {
 	uint32_t last_allocated_block;
 	void *filesystem;
 	void *terminal;
+    const struct systemzero_api *api;
 } env_vars_t;
 
 #endif
