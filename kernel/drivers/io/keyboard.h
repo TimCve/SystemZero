@@ -22,6 +22,9 @@
 #define L_ARROW 0x4B
 #define U_ARROW 0x48
 #define D_ARROW 0x50
+#define HOME 0x47
+#define END 0x4f
+#define DELETE 0x53
 
 #define PRESS_THRESH_FAST 1100000
 #define HOLD_THRESH_FAST 160000
@@ -54,6 +57,10 @@ static const kbd_keycode shft_keycode_table[] __attribute__((unused)) = {
 
 char get_input_keycode();
 char get_printable_char(char keycode, int i, uint8_t shift);
-void kbd_readline(char* buffer, int tty_calibration, int buffer_bytes);
+typedef struct { uint8_t shift, control, extended, pause; } keyboard_state_t;
+typedef struct { uint8_t code, character, shift, control; } keyboard_event_t;
+int kbd_decode(keyboard_state_t *state, uint8_t raw, keyboard_event_t *event);
+void kbd_wait_event(keyboard_state_t *state, keyboard_event_t *event);
+int kbd_readline(char* buffer, int tty_calibration, int buffer_bytes);
 
 #endif

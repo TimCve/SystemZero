@@ -172,8 +172,17 @@ KEYBINDINGS:
 ctrl+s    save
 ctrl+r    reset cursor to top left
 esc       quit
-pgup      scroll up
-pgdn      scroll down
+arrows    move through visual lines, preserving column with up/down
+home/end  move to the start/end of the visual line
+ctrl+home/ctrl+end  move to the start/end of the file
+pgup      move up one page
+pgdn      move down one page
+tab       insert a tab (displayed with four-column tab stops)
+backspace/delete  remove the previous/current character
+
+The cursor stays visible as you type and move. Only changed screen cells are
+repainted. A modified marker remains until the file is saved. Escape exits
+without saving unsaved changes.
 
 
 command : format
@@ -202,7 +211,11 @@ EXAMPLE USAGE:
     > hexedit LICENSE
 
 will open LICENSE for editing in hex mode.
-(all keybindings are shown inside the program)
+The display shows 16 bytes per row, an eight-digit offset, and an ASCII column.
+Arrows move the selected byte; Page Up/Down moves a full page. The c and i keys
+change or insert a byte, d/Delete removes it, and Backspace removes the previous
+byte. Press w or Ctrl+S to save. Escape cancels byte entry or exits the editor.
+Home/End move within a row; Ctrl+Home/Ctrl+End move to the file boundaries.
 
 
 command : list

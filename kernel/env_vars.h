@@ -10,6 +10,7 @@ typedef struct {
 	uint32_t tty_calibration;
 	uint32_t last_allocated_block;
 	void *filesystem;
+	void *terminal;
 } env_vars_t;
 
 #endif

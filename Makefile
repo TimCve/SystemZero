@@ -7,9 +7,9 @@ PYTHON := python3
 CFLAGS := -m32 -std=gnu11 -Os -Wall -Wextra -Wno-unused-parameter -ffreestanding -fno-builtin -fno-common -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -ffunction-sections -fdata-sections -mno-sse -mno-mmx -MMD -MP
 PIEFLAGS := -fPIE
 LDFLAGS := -m elf_i386 -pie --no-dynamic-linker -Bsymbolic --build-id=none --gc-sections
-KERNEL_SOURCES := $(filter-out kernel/program_entry.c,$(shell find kernel -name '*.c')) shared/esfs.c shared/elf.c
+KERNEL_SOURCES := $(filter-out kernel/program_entry.c,$(shell find kernel -name '*.c')) shared/esfs.c shared/elf.c shared/terminal.c shared/text.c
 KERNEL_OBJECTS := $(patsubst %.c,build/obj/%.o,$(KERNEL_SOURCES)) build/obj/kernel/cpu/interrupt.o
-BOOT_SOURCES := boot/loader.c kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c shared/elf.c
+BOOT_SOURCES := boot/loader.c kernel/drivers/disk/ata.c kernel/drivers/io/screen.c kernel/drivers/io/video.c kernel/drivers/utils/mem.c kernel/drivers/utils/ports.c shared/elf.c shared/terminal.c
 BOOT_OBJECTS := $(patsubst %.c,build/boot/%.o,$(BOOT_SOURCES)) build/boot/entry.o
 PROGRAM_SOURCES := $(wildcard external_programs/*.c)
 PROGRAMS := $(PROGRAM_SOURCES:.c=.elf)
@@ -71,11 +71,11 @@ os-image.vmdk: os-image.bin
 convert_vmdk: os-image.vmdk
 
 run: os-image.bin
-	qemu-system-i386 -m 64M -drive format=raw,file=os-image.bin
+	qemu-system-i386 -m 64M -vga std -drive format=raw,file=os-image.bin
 run_gtk: os-image.bin
-	qemu-system-i386 -m 64M -display gtk -drive format=raw,file=os-image.bin
+	qemu-system-i386 -m 64M -vga std -display gtk -drive format=raw,file=os-image.bin
 run_sdl: os-image.bin
-	qemu-system-i386 -m 64M -display sdl -drive format=raw,file=os-image.bin
+	qemu-system-i386 -m 64M -vga std -display sdl -drive format=raw,file=os-image.bin
 
 # The disk image contains user files and survives cleaning build artifacts.
 clean:

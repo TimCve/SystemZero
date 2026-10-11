@@ -49,6 +49,12 @@ class RegressionChecks(unittest.TestCase):
         self.compile(binary, "tests/fs_cache_checks.c", "shared/esfs.c")
         self.run_checked(binary)
 
+    def test_framebuffer_incremental_rendering_editor_navigation_and_keyboard(self):
+        binary = self.directory / "display"
+        self.compile(binary, "tests/display_checks.c", "shared/terminal.c", "shared/text.c",
+                     "kernel/drivers/io/keyboard.c", extra=("-ffunction-sections", "-Wl,--gc-sections"))
+        self.run_checked(binary)
+
     def test_allocator_bounds_alignment_cleanup(self):
         binary = self.directory / "memory"
         self.compile(binary, "tests/memory_checks.c", "kernel/drivers/utils/mem.c",

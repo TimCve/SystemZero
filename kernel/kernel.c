@@ -48,6 +48,7 @@ int execute(char *cmd, char *args, env_vars_t *env) {
 }
 
 void kmain(env_vars_t* env_vars_ptr) {
+	screen_init(env_vars_ptr);
 	set_term_color(env_vars_ptr->term_color);
 
 	// actual kernel starts here
@@ -80,18 +81,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 	init_timer(1000);
 	print(" [DONE]"); print_newline();
 
-	// calibrate TTY for speed
-	print("Starting TTY calibration sequence...");
-	int tick_start = get_tick();
-	int index = 0;
-	while(index < 20000) {
-		print_char(' ');
-		set_cursor_position(get_cursor_position() - 2);
-		index++;
-	}
-	int tty_calibration = get_tick() - tick_start;	
-	print(" [TICKS: "); print_dec(tty_calibration); print("]"); print_newline();
-	env_vars_ptr->tty_calibration = tty_calibration;
+	// Keyboard input is event-driven; it no longer needs display-speed calibration.
+	env_vars_ptr->tty_calibration = 0;
 
 	print_newline();
 
@@ -127,7 +118,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
 
-		kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000);
+		if (!kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000)) { print_newline(); continue; }
 
 		print_dec(execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr)); print(" -> exit status"); print_newline();
 	}	

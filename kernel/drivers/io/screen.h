@@ -1,4 +1,8 @@
+#ifndef SYSTEMZERO_SCREEN_H
+#define SYSTEMZERO_SCREEN_H
 #include <stdint.h>
+#include "../../env_vars.h"
+#include "../../../shared/terminal.h"
 
 #define VIDEO_ADDRESS 0xb8000
 #define ROWS 25
@@ -20,6 +24,12 @@ char char_under_cursor();
 int print_char(char ch);
 int get_cursor_position();
 void set_cursor_position(int offset);
-
-
-
+int screen_init(env_vars_t *env);
+void screen_bind_env(env_vars_t *env);
+void screen_begin_update(void);
+void screen_end_update(void);
+void screen_put_cell(uint32_t row, uint32_t col, uint8_t ch, uint8_t color);
+void screen_put_text(uint32_t row, uint32_t col, const char *text, uint8_t color);
+void screen_cursor_visible(int visible);
+int screen_draw_pixel(uint32_t x, uint32_t y, uint8_t color);
+#endif

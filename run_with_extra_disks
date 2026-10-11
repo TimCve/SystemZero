@@ -2,7 +2,7 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 make all
-args=(-m 64M -drive format=raw,file=os-image.bin,index=0)
+args=(-m 64M -vga std -drive format=raw,file=os-image.bin,index=0)
 case "${1:-}" in
     gtk|sdl) args+=(-display "$1");;
     "") ;;

@@ -20,6 +20,23 @@ mov dl, [BOOT_DRIVE]
 mov ah, 0x42
 int 0x13
 jc failure
+; Preserve the BIOS 8x16 font before entering protected mode.
+push ds
+mov ax, 0x1130
+mov bh, 6
+int 0x10
+mov si, bp
+mov ax, es
+mov ds, ax
+mov ax, 0x8000
+mov es, ax
+xor di, di
+mov cx, 4096
+cld
+rep movsb
+pop ds
+xor ax, ax
+mov es, ax
 ; Enable A20 before using memory above one MiB.
 in al, 0x92
 or al, 2
