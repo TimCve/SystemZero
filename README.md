@@ -36,6 +36,22 @@ text editor follows visual lines, expands tabs to four-column stops, keeps the
 cursor visible, and preserves its column when moving across shorter lines.
 Page Up/Down moves a full page. The hex editor shows 16 bytes per row, fixed-width
 offsets, and an ASCII column; Escape cancels its byte-entry prompt.
+Closing an editor or the viewer restores the console text, colors, cursor, and graphics
+from before it opened. The shell returns to its prompt without printing
+a program exit-status line.
+
+The status bar shows SystemZero v0.1.0, the running command and its arguments,
+and a 24-hour clock. It occupies the framebuffer margin; the 96×48 text area
+stays available. The VGA fallback reserves one row for an 80×24 text area.
+Run `settings` for clock fields, top/bottom placement, and graphical
+foreground/background color palettes. Tab selects a field, arrows adjust it,
+digits enter time, Enter saves, and Escape cancels. Preferences and the clock
+offset are saved on the system drive in `systemzero.cfg`.
+
+Programs can start preemptive workers with `thread_start`, join them, sleep,
+and coordinate shared data with mutexes. Run `cc threads.sz threads` followed
+by `threads` for an example. The kernel uses separate stacks and a 5 ms timer
+quantum, and waits for workers before unloading their command.
 
 ## Keep files between builds
 
@@ -117,10 +133,10 @@ Inside SystemZero, use the bundled compiler and source examples:
 
 Write your own source with `touch` and `edit`, then run `cc SOURCE OUTPUT`.
 The compiler emits native ELF32 programs that call a versioned kernel API for
-printing, files, memory, keyboard input, and graphics. Compilation errors report
+printing, files, memory, keyboard input, graphics, and threads. Compilation errors report
 line/column locations and preserve existing output. Source and output use the
 selected drive; commands are searched there before falling back to the system
-drive. `hello.sz`, `files.sz`, and `draw.sz` are installed with the build.
+drive. `hello.sz`, `files.sz`, `draw.sz`, and `threads.sz` are installed with the build.
 The same language reference is installed as `language.txt` for `view language.txt`.
 
 See [the language and kernel API reference](docs/language.md) for supported

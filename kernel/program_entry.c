@@ -4,6 +4,7 @@
 #include "drivers/io/screen.h"
 extern int main(env_vars_t *, char *);
 int program_start(env_vars_t *env, char *args) {
+    mem_bind_env(env);
     set_free_ptr(env->free_mem_ptr);
     fs_bind_env(env);
     screen_bind_env(env);

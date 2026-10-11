@@ -12,6 +12,8 @@ typedef struct env_vars {
 	void *filesystem;
 	void *terminal;
     const struct systemzero_api *api;
+    struct desktop *desktop;
+    int (*run)(char *, char *, struct env_vars *);
 } env_vars_t;
 
 #endif

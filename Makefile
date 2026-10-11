@@ -6,6 +6,7 @@ OBJCOPY := objcopy
 PYTHON := python3
 CFLAGS := -m32 -std=gnu11 -Os -Wall -Wextra -Wno-unused-parameter -ffreestanding -fno-builtin -fno-common -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -ffunction-sections -fdata-sections -mno-sse -mno-mmx -MMD -MP
 PIEFLAGS := -fPIE
+CFLAGS += -DSYSTEMZERO_GUEST
 LDFLAGS := -m elf_i386 -pie --no-dynamic-linker -Bsymbolic --build-id=none --gc-sections
 KERNEL_SOURCES := $(filter-out kernel/program_entry.c,$(shell find kernel -name '*.c')) shared/esfs.c shared/elf.c shared/terminal.c shared/text.c
 KERNEL_OBJECTS := $(patsubst %.c,build/obj/%.o,$(KERNEL_SOURCES)) build/obj/kernel/cpu/interrupt.o
@@ -85,9 +86,10 @@ clean:
 
 test: ESFS_raw_write
 	$(PYTHON) -m unittest discover -s tests -v
-test-qemu: all build/tests/large.elf build/tests/nested.elf
+test-qemu: all build/tests/large.elf build/tests/nested.elf build/tests/console_state.elf
 	$(PYTHON) tests/qemu_smoke.py
 	$(PYTHON) tests/qemu_compiler.py
+	$(PYTHON) tests/qemu_threads.py
 
 .SECONDARY:
 -include $(DEPS) $(wildcard build/obj/tests/*.d)

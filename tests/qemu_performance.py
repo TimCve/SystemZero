@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 
-from qemu_smoke import Guest, ROOT
+from qemu_smoke import Guest, ROOT, COLS, ROWS
 
 
 def run(guest, command):
@@ -18,10 +18,10 @@ def run(guest, command):
     guest.command("send-key", {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20})
     while time.monotonic() - start < 30:
         screen = guest.screen()
-        at = screen.rfind("> " + command)
-        tail = screen[at + len(command) + 2:] if at >= 0 else ""
-        status = "0 -> exit status"
-        if status in tail and "IDE" in tail[tail.index(status) + len(status):]:
+        cursor = guest.terminal_state()["cursor"]
+        row = cursor // COLS
+        if row < ROWS and cursor % COLS == 6 and \
+                screen.splitlines()[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>"):
             return time.monotonic() - start
         time.sleep(.01)
     raise AssertionError(f"Command {command!r} timed out:\n{screen}")

@@ -30,6 +30,10 @@ int main(int argc, char **argv) {
     good("int add(int a, int b); int main() { return add(2,3); } int add(int a,int b) { return a+b; }");
     good("char s[]=\"hello\"; int main() { char *p=s; p++; return *p; }");
     good("int main(){ int i=0; while(i<5){ if(i==3) break; i++; continue; } return i; }");
+    good("int worker(int x){return x;} int main(){return thread_join(thread_start(worker,7));}");
+    bad("void worker(int x){} int main(){thread_start(worker,0);}", "Thread entry");
+    bad("int worker(char *x){return 0;} int main(){thread_start(worker,0);}", "Thread entry");
+    bad("int worker(int); int main(){thread_start(worker,0);}", "no definition");
     FILE *file = fopen(argv[1], "rb"); assert(file);
     char source[SZC_MAX_SOURCE + 1]; size_t n = fread(source, 1, SZC_MAX_SOURCE, file);
     assert(!ferror(file)); fclose(file); source[n] = 0; good(source);

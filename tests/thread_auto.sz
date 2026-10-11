@@ -1,0 +1,9 @@
+int later(int arg) {
+    thread_sleep(120);
+    if (file_write("auto-join.txt", &arg, 4) != 0) return 1;
+    print("auto-joined\n"); return 9;
+}
+int main() {
+    if (thread_start(later, 77) < 0) return 1;
+    return 0;
+}

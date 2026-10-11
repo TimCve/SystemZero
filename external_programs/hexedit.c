@@ -55,7 +55,7 @@ static int ask_byte(uint8_t color, int calibration, uint8_t *value) {
     *value = htoi(input); return 1;
 }
 int main(env_vars_t *env, char *args) {
-    select_drive(env->selected_drive); set_term_color(env->term_color);
+    select_drive(env->selected_drive);
     char filename[512]; char *part = splice(args, 1, ' '); memcpy(filename, part, strlen(part) + 1);
     inode_t info = get_file_info(filename);
     if (!info.valid) { print("File not found."); print_newline(); return 1; }
@@ -63,6 +63,9 @@ int main(env_vars_t *env, char *args) {
     if (!file || file_read(filename, file, (info.size + 511) / 512, 0) == 2) return 1;
     uint32_t size = info.size, cursor = 0, offset = 0; int dirty = 0;
     keyboard_state_t keyboard = {0}; const char *notice = "";
+    screen_state_t *console = screen_save_state();
+    if (!console) { print("Not enough memory to save the console."); print_newline(); return 1; }
+    set_term_color(env->term_color);
     set_scrolling(0); render(file, size, offset, cursor, filename, env->term_color, dirty, notice);
     for (;;) {
         keyboard_event_t event; kbd_wait_event(&keyboard, &event); uint8_t key = event.code;
@@ -103,5 +106,5 @@ int main(env_vars_t *env, char *args) {
         if (cursor >= offset + HEX_PAGE) offset = (cursor / HEX_COLUMNS - HEX_ROWS + 1) * HEX_COLUMNS;
         render(file, size, offset, cursor, filename, env->term_color, dirty, notice);
     }
-    clear(); return 0;
+    screen_restore_state(console); return 0;
 }

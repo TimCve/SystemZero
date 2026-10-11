@@ -1,5 +1,7 @@
 #include "kernel.h"
 #include "sys_api.h"
+#include "desktop.h"
+#include "cpu/thread.h"
 #include "../shared/elf.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
@@ -20,6 +22,10 @@ void sleep(int time) {
 }
 
 int execute(char *cmd, char *args, env_vars_t *env) {
+    return env && env->run ? env->run(cmd, args, env) : 2;
+}
+
+static int kernel_execute(char *cmd, char *args, env_vars_t *env) {
     uint8_t previous_drive = selected_ata_drive();
     /* User executables live on the working drive; bundled commands are a fallback. */
     select_drive(env->selected_drive);
@@ -41,8 +47,14 @@ int execute(char *cmd, char *args, env_vars_t *env) {
         if (!memory || !elf_load((void *)source, info.size, &plan, (void *)memory, plan.size)) {
             print("Unsupported executable or insufficient memory."); print_newline();
         } else {
+            char previous_command[STATUS_COMMAND];
+            memcpy(previous_command, env->desktop->command, STATUS_COMMAND);
+            desktop_command(env, args);
+            uint32_t previous_owner = thread_scope_begin();
             env->free_mem_ptr = get_free_ptr();
             status = ((int (*)(env_vars_t *, char *))(memory + plan.entry))(env, args);
+            thread_scope_end(previous_owner);
+            desktop_command(env, previous_command);
             /* Native compiler output calls the kernel without program_start(). */
             screen_bind_env(env);
             if (env->terminal) ((terminal_t *)env->terminal)->updates = 0;
@@ -59,6 +71,7 @@ int execute(char *cmd, char *args, env_vars_t *env) {
 void kmain(env_vars_t* env_vars_ptr) {
 	screen_init(env_vars_ptr);
 	sys_api_init(env_vars_ptr);
+    env_vars_ptr->run = kernel_execute;
 	set_term_color(env_vars_ptr->term_color);
 
 	// actual kernel starts here
@@ -68,6 +81,7 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 	// set pointer for manual memory allocation
 	set_free_ptr(env_vars_ptr->free_mem_ptr);
+    mem_bind_env(env_vars_ptr);
 
 	// install interrupt service routines
 	print("Installing interrupt service routines...");
@@ -89,6 +103,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 	// initialize timer
 	print("Initialising timer...");
 	init_timer(1000);
+    desktop_init(env_vars_ptr);
+    threads_init(env_vars_ptr);
 	print(" [DONE]"); print_newline();
 
 	// Keyboard input is event-driven; it no longer needs display-speed calibration.
@@ -121,15 +137,21 @@ void kmain(env_vars_t* env_vars_ptr) {
 	// kernel shell
 	while(1) {
 		select_drive(env_vars_ptr->selected_drive);
+        scroll_terminal();
+        screen_begin_update();
+        uint32_t prompt_row = get_cursor_position() / (COLS * 2);
+        for (uint32_t col = 0; col < COLS; col++) screen_put_cell(prompt_row, col, ' ', env_vars_ptr->term_color);
 
 		set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x0e);
 		print("IDE"); print_dec(env_vars_ptr->selected_drive); print("> ");
 		set_term_color(env_vars_ptr->term_color);
+        screen_end_update();
 
 		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
 
 		if (!kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000)) { print_newline(); continue; }
 
-		print_dec(execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr)); print(" -> exit status"); print_newline();
+		execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr);
+		if (get_cursor_position() % (COLS * 2)) print_newline();
 	}	
 }

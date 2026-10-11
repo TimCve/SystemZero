@@ -32,7 +32,7 @@ int kbd_decode(keyboard_state_t *state, uint8_t raw, keyboard_event_t *event) {
     return 1;
 }
 void kbd_wait_event(keyboard_state_t *state, keyboard_event_t *event) {
-    while (!kbd_decode(state, (uint8_t)get_input_keycode(), event)) {}
+    while (!kbd_decode(state, (uint8_t)get_input_keycode(), event)) screen_idle();
 }
 int kbd_readline(char *buffer, int calibration, int capacity) {
     (void)calibration;

@@ -1,6 +1,7 @@
 ; Defined in isr.c
 [extern isr_handler]
 [extern irq_handler]
+global irq_schedule
 
 ; Common ISR code
 isr_common_stub:
@@ -25,11 +26,9 @@ isr_common_stub:
     mov gs, ax
     popa
     add esp, 8 ; Cleans up the pushed error code and pushed ISR number
-    sti
-    iret ; pops 5 things at once: CS, EIP, EFLAGS, SS, and ESP
+    iret ; Restores EIP, CS, EFLAGS, including the saved interrupt-enable flag.
 
-; Common IRQ code. Identical to ISR code except for the 'call' 
-; and the 'pop ebx'
+; Common IRQ code. The C handler can choose another saved thread stack.
 irq_common_stub:
     pusha 
     mov ax, ds
@@ -39,7 +38,11 @@ irq_common_stub:
     mov es, ax
     mov fs, ax
     mov gs, ax
-    call irq_handler ; Different than the ISR code
+    cld
+    push esp
+    call irq_handler
+    add esp, 4
+    mov esp, eax ; The scheduler may return another thread's saved stack.
     pop ebx  ; Different than the ISR code
     mov ds, bx
     mov es, bx
@@ -47,8 +50,12 @@ irq_common_stub:
     mov gs, bx
     popa
     add esp, 8
-    sti
     iret 
+
+irq_schedule:
+    push byte 0
+    push byte 48
+    jmp irq_common_stub
     
 ; We don't get information about which interrupt was caller
 ; when the handler is run, so we will need to have a different handler

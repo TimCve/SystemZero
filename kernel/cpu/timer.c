@@ -2,11 +2,13 @@
 #include "isr.h"
 #include "../drivers/utils/ports.h"
 #include "../drivers/io/screen.h"
+#include "../desktop.h"
 
 volatile uint32_t tick = 0;
 
 static void timer_cb(registers_t regs) {
 	tick++;
+    desktop_tick();
 }
 
 void init_timer(uint32_t freq) {

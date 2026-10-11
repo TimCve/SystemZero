@@ -28,6 +28,11 @@ int screen_init(env_vars_t *env);
 uint32_t screen_rows(void);
 uint32_t screen_columns(void);
 void screen_bind_env(env_vars_t *env);
+void screen_idle(void);
+/* Snapshots use the command's heap and are released when the command returns. */
+typedef struct screen_state screen_state_t;
+screen_state_t *screen_save_state(void);
+void screen_restore_state(const screen_state_t *state);
 void screen_begin_update(void);
 void screen_end_update(void);
 void screen_put_cell(uint32_t row, uint32_t col, uint8_t ch, uint8_t color);

@@ -63,7 +63,13 @@ class Guest:
     def screen(self):
         address = self.terminal_address()
         columns, rows = (COLS, ROWS) if address else (80, 25)
-        chars = self.memory(address or 0xb8000, columns * rows * 2)[::2].replace(b"\x00", b" ").decode("cp437")
+        base = address or 0xb8000
+        if not address:
+            desktop = self.desktop_state()
+            if desktop and desktop["enabled"]:
+                rows -= 1
+                if not desktop["position"]: base += 80 * 2
+        chars = self.memory(base, columns * rows * 2)[::2].replace(b"\x00", b" ").decode("cp437")
         return "\n".join(chars[i:i + columns] for i in range(0, columns * rows, columns))
 
     def screenshot(self, path):
@@ -79,6 +85,15 @@ class Guest:
 
     def heap_pointer(self):
         return struct.unpack("<I", self.memory(self.env_address, 4))[0]
+
+    def desktop_state(self):
+        address = struct.unpack("<I", self.memory(self.env_address + 28, 4))[0]
+        if not address: return None
+        values = struct.unpack("<III4B", self.memory(address, 16))
+        state = dict(zip(("seconds", "milliseconds", "dirty", "position", "color", "enabled", "reserved"), values))
+        state["command"] = self.memory(address + 16, 2000).split(b"\0", 1)[0].decode()
+        state["bar"] = self.memory(address + 2020, 101).split(b"\0", 1)[0].decode()
+        return state
 
     def wait_for(self, text, timeout=20):
         deadline = time.monotonic() + timeout
@@ -129,32 +144,30 @@ class Guest:
         if submit:
             self.key("ret")
 
-    def run(self, text, expected="0 -> exit status"):
+    def run(self, text, expected=None):
         self.type(text)
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             screen = self.screen()
             state = self.terminal_state()
-            row = state["cursor"] // COLS
+            cursor, columns, rows = state["cursor"], COLS, ROWS
+            row = cursor // columns
             lines = screen.splitlines()
             start = screen.rfind("> " + text)
             tail = screen[start + len(text) + 2:] if start >= 0 else ""
-            # Long output can scroll the command echo away; the live cursor identifies
-            # the new shell prompt, with this command's status immediately above it.
-            if 0 < row < ROWS and state["cursor"] % COLS == 6 and \
-                    lines[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>") and \
-                    lines[row - 1].strip() == expected:
+            # Long output can scroll the command echo away; the live cursor still
+            # identifies the next shell prompt without printing an exit-status line.
+            if 0 <= row < rows and cursor % columns == 6 and \
+                    lines[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>"):
+                output = tail if start >= 0 else screen
+                assert "-> exit status" not in output, output
+                if expected is not None:
+                    assert expected in output, f"Command {text!r} did not display {expected!r}:\n{output}"
                 print(f"PASS guest: {text}", flush=True)
                 # A taller screen retains previous listings; return this command's output.
-                return tail if start >= 0 else screen
-            if text == "cls" and screen.startswith(expected) and screen.splitlines()[1].strip() == "IDE0>":
-                print("PASS guest: cls", flush=True)
-                return screen
-            if expected in tail and "IDE" in tail[tail.index(expected) + len(expected):]:
-                print(f"PASS guest: {text}", flush=True)
-                return tail
+                return output
             time.sleep(.1)
-        raise AssertionError(f"Command {text!r} did not finish with {expected!r}:\n{screen}")
+        raise AssertionError(f"Command {text!r} did not return to the shell:\n{screen}")
 
     def close(self):
         try: self.command("quit")
@@ -163,7 +176,8 @@ class Guest:
             self.process.stdin.close(); self.process.stdout.close(); self.log.close()
 
 def main():
-    subprocess.run(["make", "build/tests/large.elf", "build/tests/nested.elf"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["make", "build/tests/large.elf", "build/tests/nested.elf", "build/tests/console_state.elf"],
+                   cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="systemzero-qemu-") as scratch:
         image = Path(scratch) / "disk.bin"
         shutil.copyfile(ROOT / "os-image.bin", image)
@@ -183,6 +197,7 @@ def main():
         wrapping.write_bytes(b"a" * (COLS - 1) + b"bcd")
         for name, source in (("large", ROOT / "build/tests/large.elf"), ("binary", binary),
                              ("nested", ROOT / "build/tests/nested.elf"),
+                             ("console-state", ROOT / "build/tests/console_state.elf"),
                              ("invalid", invalid), ("editing", editable), ("multiline", multiline),
                              ("wrapping", wrapping)):
             subprocess.run([writer, "--replace", str(image), name, str(source)], check=True)
@@ -211,22 +226,22 @@ def main():
             for name in ("copy", "list", "read", "manual.txt"):
                 assert name in screen, screen
             assert "chain" not in screen, screen
-            guest.run("chain", "2 -> exit status")
+            guest.run("chain", "Command not found or filesystem unavailable.")
             guest.run("drives")
-            guest.run("drive 3", "1 -> exit status")
+            guest.run("drive 3", "Drive doesn't exist")
             guest.run("touch smoke.txt")
             assert "smoke.txt" in guest.run("list")
             guest.run("del smoke.txt")
             assert "smoke.txt" not in guest.run("list")
-            guest.run("del smoke.txt", "1 -> exit status")
-            guest.run("read nonexistent", "1 -> exit status")
-            guest.run("nonexistent", "2 -> exit status")
-            guest.run("invalid", "2 -> exit status")
+            guest.run("del smoke.txt", "File doesn't exist!")
+            guest.run("read nonexistent", "File not found.")
+            guest.run("nonexistent", "Command not found or filesystem unavailable.")
+            guest.run("invalid", "Invalid executable or insufficient memory.")
             for _ in range(3):
                 screen = guest.run("large")
                 assert "large-elf-ok" in screen, screen
             guest.run("copy 0:binary 0:copied")
-            guest.run("copy 0:binary 0:copied", "1 -> exit status")
+            guest.run("copy 0:binary 0:copied", "Destination already exists.")
             guest.run("drive 1")
             guest.run("format")
             guest.run("list")
@@ -289,11 +304,22 @@ def main():
             guest.wait_for("PgUp/PgDn: scroll")
             guest.key("esc"); guest.wait_for("IDE0>")
             print("PASS guest: text editor, binary editor, viewer", flush=True)
+            guest.type("console-state"); guest.wait_for("Ctrl+S: save")
+            guest.key("pgdn"); guest.key("q"); guest.key("esc")
+            guest.wait_for("w: save")
+            guest.key("right"); guest.key("c"); guest.wait_for("Byte value (hex)")
+            guest.key("esc"); guest.wait_for("Byte entry cancelled")
+            guest.key("esc"); guest.wait_for("PgUp/PgDn: scroll")
+            guest.key("pgdn"); assert guest.wait_for(f"line{ROWS - 1:02d}").startswith(f"line{ROWS - 1:02d}")
+            guest.key("pgup"); assert guest.wait_for("line00").startswith("line00")
+            guest.key("esc"); guest.wait_for("console-restore-ok")
+            guest.wait_for("IDE0>")
+            print("PASS guest: editor/viewer console, cursor, colors, and framebuffer restoration", flush=True)
             assert "nested-ok" in guest.run("nested")
             assert "nested.txt" not in guest.run("list")
-            guest.run("drawline 10 10 20 10 14")
+            guest.run("drawline 10 30 20 30 14")
             state = guest.terminal_state()
-            address = state["pixels"] + (10 * state["pitch"] + 10) * 4
+            address = state["pixels"] + (30 * state["pitch"] + 10) * 4
             assert struct.unpack("<I", guest.memory(address, 4))[0] == 0xffff55
             guest.run("cls")
             assert struct.unpack("<I", guest.memory(address, 4))[0] == 0x0000aa
@@ -320,12 +346,20 @@ def main():
         try:
             guest.wait_for("IDE0>"); assert not guest.terminal_address()
             guest.type("edit multiline"); guest.wait_for("Ctrl+S: save")
-            assert "Ctrl+S: save" in guest.screen().splitlines()[24]
-            guest.key("pgdn"); assert guest.wait_for("line24").startswith("line24")
+            assert "Ctrl+S: save" in guest.screen().splitlines()[23]
+            guest.key("pgdn"); assert guest.wait_for("line23").startswith("line23")
             guest.key("esc"); guest.wait_for("IDE0>")
             guest.type("hexedit binary"); guest.wait_for("w: save")
-            guest.key("pgdn"); guest.wait_for("00000160:")
+            guest.key("pgdn"); guest.wait_for("00000150:")
             guest.key("esc"); guest.wait_for("IDE0>")
+            guest.type("console-state"); guest.wait_for("Ctrl+S: save")
+            guest.key("right"); guest.key("q"); guest.key("esc")
+            guest.wait_for("w: save"); guest.key("right"); guest.key("esc")
+            guest.wait_for("PgUp/PgDn: scroll")
+            guest.key("pgdn"); assert guest.wait_for("line23").startswith("line23")
+            guest.key("pgup"); assert guest.wait_for("line00").startswith("line00")
+            guest.key("esc")
+            guest.wait_for("console-restore-ok"); guest.wait_for("IDE0>")
             print("PASS guest: legacy text console geometry and editors", flush=True)
         finally:
             guest.close()
@@ -335,7 +369,7 @@ def main():
         try:
             guest.wait_for("IDE0>")
             guest.run("format")
-            guest.run("list", "2 -> exit status")
+            guest.run("list", "Command not found or filesystem unavailable.")
         finally:
             guest.close()
         subprocess.run([writer, "--check", str(formatted)], check=True)

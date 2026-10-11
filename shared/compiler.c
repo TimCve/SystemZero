@@ -22,7 +22,8 @@ enum {
 typedef struct { uint32_t kind, value, start, length, line, column; } token_t;
 typedef struct {
     uint32_t name, type, argc, argtypes[ARGUMENTS], params[ARGUMENTS], body, end, address;
-    int defined;
+    uint32_t thread_address;
+    int defined, referenced;
 } function_t;
 typedef struct { uint32_t name, type, count, address, scope; } variable_t;
 typedef struct { uint32_t at, target; } fixup_t;
@@ -31,12 +32,12 @@ typedef struct { uint32_t type; int lvalue, null_constant; } expression_t;
 typedef struct {
     const uint8_t *source; uint8_t *image; szc_result_t *result;
     uint32_t size, capacity, ntokens, pos, pc, nfunctions, nglobals, nlocals;
-    uint32_t data_size, ndatafix, ncallfix, local_bytes, scope, depth, nloops;
+    uint32_t data_size, ndatafix, ncallfix, nfunctionfix, local_bytes, scope, depth, nloops;
     uint32_t return_type, returns;
     token_t tokens[TOKENS];
     function_t functions[FUNCTIONS];
     variable_t globals[GLOBALS], locals[LOCALS];
-    fixup_t datafix[FIXUPS], callfix[FIXUPS];
+    fixup_t datafix[FIXUPS], callfix[FIXUPS], functionfix[FIXUPS];
     loop_t loops[32];
     uint8_t data[DATA_BYTES];
 } compiler_t;
@@ -482,9 +483,21 @@ static expression_t primary(compiler_t *c) {
             e.type = b ? b->type : f->type;
         } else {
             variable_t *v = variable(c, name);
-            if (!v) { fail(c, "Unknown variable"); return e; }
-            if (v->scope) local_address(c, v->address); else data_address(c, v->address);
-            e.type = v->type + (v->count ? SZ_POINTER : 0); e.lvalue = !v->count;
+            if (!v) {
+                int fi = function_index(c, name);
+                if (fi < 0) { fail(c, "Unknown variable"); return e; }
+                function_t *f = &c->functions[fi];
+                if (f->type != SZ_INT || f->argc != 1 || f->argtypes[0] != SZ_INT) {
+                    fail(c, "Thread entry must be int name(int argument)"); return e;
+                }
+                op2(c, 0x8d, 0x83); uint32_t at = c->pc; word(c, 0);
+                if (c->nfunctionfix == FIXUPS) fail(c, "Function-reference limit exceeded");
+                else c->functionfix[c->nfunctionfix++] = (fixup_t){at, (uint32_t)fi};
+                f->referenced = 1; e.type = SZ_VOID_PTR;
+            } else {
+                if (v->scope) local_address(c, v->address); else data_address(c, v->address);
+                e.type = v->type + (v->count ? SZ_POINTER : 0); e.lvalue = !v->count;
+            }
         }
     } else if (accept(c, '(')) {
         e = expression(c, 1); expect(c, ')', "Expected )");
@@ -734,6 +747,9 @@ int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t c
     zero(image, ENTRY); c->pc = ENTRY; entry(c, main_index);
     for (uint32_t i = 0; i < c->nfunctions && !result->error; i++)
         if (c->functions[i].defined) function_body(c, &c->functions[i]);
+    for (uint32_t i = 0; i < c->nfunctions && !result->error; i++) if (c->functions[i].referenced) {
+        c->functions[i].thread_address = c->pc; entry(c, i);
+    }
     if (result->error) return 0;
     while (c->pc % 4) byte(c, 0);
     uint32_t data_start = c->pc;
@@ -744,6 +760,11 @@ int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t c
         function_t *f = &c->functions[c->callfix[i].target];
         if (!f->defined) fail(c, "Called function has no definition");
         else target(c, c->callfix[i].at, f->address);
+    }
+    for (uint32_t i = 0; i < c->nfunctionfix && !result->error; i++) {
+        function_t *f = &c->functions[c->functionfix[i].target];
+        if (!f->defined) fail(c, "Thread function has no definition");
+        else patch(c, c->functionfix[i].at, f->thread_address);
     }
     if (result->error) return 0;
     /* ELF32 ET_DYN with one PT_LOAD, vaddr/offset zero. All addresses are relative

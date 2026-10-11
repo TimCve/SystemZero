@@ -21,6 +21,7 @@ typedef struct {
     uint32_t width, height, pitch, origin_x, origin_y;
     uint32_t cursor, shown_cursor, updates, rendered_cells, presentations;
     uint8_t color, scrolling, cursor_visible, clear_canvas;
+    uint32_t reserved_top, reserved_bottom;
 } terminal_t;
 
 int terminal_init(terminal_t *t, volatile uint32_t *pixels, uint32_t width,

@@ -8,7 +8,7 @@ Compiles C-like source text into a native executable inside SystemZero.
     > cc hello.sz hello
     > hello
 
-The build installs hello.sz, files.sz, and draw.sz as source examples.
+The build installs hello.sz, files.sz, draw.sz, and threads.sz as source examples.
 Use touch to create a source file, edit to write it, Ctrl+S to save, and Escape
 to leave the editor. Source and output must have different names.
 
@@ -18,7 +18,9 @@ Kernel services are built in: print, print_dec, print_hex, putchar, newline,
 clear, set_color, get_color, screen_rows, screen_columns, put_text, put_cell,
 begin_update, end_update, draw_pixel, draw_line, alloc, memcpy, memset, strlen,
 readline, getchar, file_size, file_read, file_write, file_delete, file_create,
-sleep, and execute. File sizes, read counts, and offsets are in bytes.
+sleep, execute, thread_start, thread_join, thread_yield, thread_sleep, thread_id,
+thread_count, mutex_create, mutex_lock, mutex_unlock, clock_time, status_position,
+and settings_apply. File sizes, read counts, and offsets are in bytes.
 
     int main() {
         print("Hello from SystemZero!\n");
@@ -29,9 +31,26 @@ Source/output are on the selected drive. The shell searches that drive first,
 then the system drive for bundled commands. Output is replaced only after a
 successful compile; errors show filename:line:column and return status 1.
 The first version has no includes, floating point, structs, for/switch,
-function pointers, variadic calls, or separate object/library linking.
+general function-pointer declarations, variadic calls, or separate object/library linking.
+Pass an int worker(int argument) function name to thread_start to create a worker.
+Use mutexes for shared data; the command waits for its workers before exiting.
 Source limit: 64 KiB. Executable limit: 256 KiB.
 Use view language.txt for the full syntax and API reference.
+
+
+command : settings
+________________________________________________________________________________
+DESCRIPTION:
+Graphical clock, status bar, and terminal color settings.
+
+    > settings
+
+Tab/Shift+Tab selects a field. Arrow keys adjust values and navigate the color
+palettes; digits enter hours/minutes/seconds. Enter saves and Escape cancels.
+The clock uses 24-hour HH:MM:SS. The status bar can sit at the top or bottom.
+Foreground/background palettes show all 16 colors with a text preview.
+Settings and the clock offset are saved in systemzero.cfg on the system drive.
+The previous console is restored when you close settings.
 
 
 command : cls

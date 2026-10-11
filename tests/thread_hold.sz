@@ -1,0 +1,5 @@
+int main(char *args) {
+    int started = clock_time();
+    while ((clock_time() + 86400 - started) % 86400 < 2) { }
+    print("busy-clock-ok\n"); return 0;
+}

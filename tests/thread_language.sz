@@ -1,0 +1,51 @@
+int first_ready;
+int second_ready;
+int lock;
+int total;
+
+int first(int arg) {
+    first_ready = 1;
+    while (!second_ready) { }
+    return 11;
+}
+int second(int arg) {
+    second_ready = 1;
+    while (!first_ready) { }
+    return 22;
+}
+int worker(int arg) {
+    int *data = (int *)alloc(4);
+    if (data == 0 || thread_id() == 0) return -2;
+    *data = 100 + arg;
+    char name[12]; memcpy(name, "worker0.txt", 12); name[6] = 'a' + arg;
+    if (file_write(name, data, 4) != 0) return -3;
+    int i = 0;
+    while (i < 40) {
+        if (mutex_lock(lock) != 0) return -4;
+        if (mutex_lock(lock) != -1) return -5;
+        total++;
+        if (i % 10 == 0) thread_yield();
+        if (mutex_unlock(lock) != 0) return -6;
+        thread_sleep(1);
+        i++;
+    }
+    int read;
+    if (file_read(name, &read, 4, 0) != 4 || read != *data || file_delete(name) != 0) return -7;
+    return arg;
+}
+int main() {
+    if (thread_id() != 0 || thread_join(0) != -1 || thread_sleep(60001) != -1 ||
+        mutex_lock(0) != -1 || mutex_unlock(0) != -1) return 1;
+    int a = thread_start(first, 0), b = thread_start(second, 0);
+    if (a < 0 || b < 0) return 2;
+    while (!first_ready || !second_ready) { }
+    if (thread_join(a) != 11 || thread_join(b) != 22 || thread_join(a) != -1) return 3;
+    lock = mutex_create(); if (lock < 0) return 4;
+    int ids[13]; int i = 0;
+    while (i < 13) { ids[i] = thread_start(worker, i); if (ids[i] < 0) return 5; i++; }
+    if (thread_start(worker, 99) != -1) return 6;
+    i = 0;
+    while (i < 13) { int result = thread_join(ids[i]); if (result != i) { print_dec(result); return 7; } i++; }
+    if (total != 520 || thread_count() != 0) return 8;
+    print("thread-checks-ok\n"); return 0;
+}

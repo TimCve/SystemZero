@@ -27,14 +27,14 @@ def main():
         try:
             guest.wait_for("IDE0>")
             initial_heap = guest.heap_pointer()
-            guest.run("cc", "1 -> exit status")
-            guest.run("cc missing.sz output", "1 -> exit status")
-            guest.run("cc hello.sz hello.sz", "1 -> exit status")
+            guest.run("cc", "Usage: cc SOURCE OUTPUT")
+            guest.run("cc missing.sz output", "Source file is missing or exceeds 64 KiB.")
+            guest.run("cc hello.sz hello.sz", "Source and output must have different names.")
             guest.run("cc hello.sz hello")
             assert "compiled inside SystemZero" in guest.run("hello")
             assert "1 4 9 16 25" in guest.run("hello")
             guest.run("copy 0:hello 0:saved-hello")
-            assert "bad.sz:2:11:" in guest.run("cc bad.sz hello", "1 -> exit status")
+            assert "bad.sz:2:11:" in guest.run("cc bad.sz hello", "bad.sz:2:11:")
             assert "compiled inside SystemZero" in guest.run("hello"), "A compile error damaged the previous executable"
             assert "api-compat-ok" in guest.run("api-check")
             guest.run("cc files.sz files")

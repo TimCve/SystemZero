@@ -13,7 +13,7 @@ static void render(const uint8_t *file, uint32_t size, uint32_t top, uint8_t col
     screen_put_text(footer, 0, "PgUp/PgDn: scroll | Arrows: one line | Esc: quit", color); screen_end_update();
 }
 int main(env_vars_t *env, char *args) {
-    select_drive(env->selected_drive); set_term_color(env->term_color);
+    select_drive(env->selected_drive);
     text_set_geometry(COLS, ROWS);
     char filename[512]; char *part = splice(args, 1, ' '); memcpy(filename, part, strlen(part) + 1);
     inode_t info = get_file_info(filename);
@@ -22,7 +22,10 @@ int main(env_vars_t *env, char *args) {
     uint8_t *file = (void *)malloc(sectors ? sectors * 512 : 1, 1, 0);
     if (!file || file_read(filename, file, sectors, 0) == 2) return 1;
     int initial = atoi(splice(args, 2, ' ')); uint32_t top = text_start(file, info.size, initial > 0 ? initial : 0);
-    keyboard_state_t keyboard = {0}; set_scrolling(0); render(file, info.size, top, env->term_color);
+    screen_state_t *console = screen_save_state();
+    if (!console) { print("Not enough memory to save the console."); print_newline(); return 1; }
+    keyboard_state_t keyboard = {0}; set_term_color(env->term_color);
+    set_scrolling(0); render(file, info.size, top, env->term_color);
     for (;;) {
         keyboard_event_t event; kbd_wait_event(&keyboard, &event);
         if (event.code == ESC) break;
@@ -35,5 +38,5 @@ int main(env_vars_t *env, char *args) {
         else continue;
         render(file, info.size, top, env->term_color);
     }
-    clear(); return 0;
+    screen_restore_state(console); return 0;
 }

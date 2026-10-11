@@ -1,0 +1,27 @@
+int lock;
+int total;
+
+int worker(int amount) {
+    int i = 0;
+    while (i < 100) {
+        mutex_lock(lock);
+        total += amount;
+        mutex_unlock(lock);
+        thread_sleep(1);
+        i++;
+    }
+    return amount;
+}
+
+int main() {
+    lock = mutex_create();
+    int first = thread_start(worker, 1);
+    int second = thread_start(worker, 2);
+    if (first < 0 || second < 0) { print("Cannot start workers.\n"); return 1; }
+    thread_join(first);
+    thread_join(second);
+    print("Workers finished. Total: ");
+    print_dec(total);
+    newline();
+    return 0;
+}

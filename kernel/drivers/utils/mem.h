@@ -1,6 +1,8 @@
 #ifndef SYSTEMZERO_MEM_H
 #define SYSTEMZERO_MEM_H
 #include <stdint.h>
+struct env_vars;
+void mem_bind_env(struct env_vars *env);
 #define HEAP_START 0x100000u
 #define HEAP_END 0x1000000u
 uint32_t malloc(uint32_t size, int align, uint32_t *physical);

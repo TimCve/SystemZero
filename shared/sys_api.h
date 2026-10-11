@@ -13,7 +13,7 @@ enum {
 #define SZ_SERVICE(id, name, result, argc, a, b, c, d, e) SZ_API_##name = id,
 #include "sys_api.def"
 #undef SZ_SERVICE
-    SZ_API_COUNT = 29
+    SZ_API_COUNT
 };
 struct env_vars;
 typedef int32_t (*systemzero_service_t)(struct env_vars *, uint32_t, uint32_t,

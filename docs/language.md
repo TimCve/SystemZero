@@ -4,8 +4,8 @@
 executables. Compilation, saving, and execution all happen inside SystemZero.
 The compiler does not invoke GCC, an external assembler, or an interpreter.
 
-Three source examples are installed on the system disk: `hello.sz`, `files.sz`,
-and `draw.sz`. At the guest shell:
+Four source examples are installed on the system disk: `hello.sz`, `files.sz`,
+`draw.sz`, and `threads.sz`. At the guest shell:
 
     cc hello.sz hello
     hello
@@ -89,10 +89,12 @@ Division is signed and truncates toward zero. Characters keep the low eight
 bits. Function arguments are evaluated left to right.
 
 The first version does not support preprocessing/includes, floating point,
-structures, function pointers, multidimensional arrays, `for`, `switch`,
+structures, general function-pointer declarations, multidimensional arrays, `for`, `switch`,
 variadic functions, or separate object/library files. Built-in kernel services
 are available by name without headers. User functions in the same source file
 are linked by the compiler.
+An `int worker(int argument)` function name can be passed to `thread_start`;
+the compiler emits an entry wrapper that connects it to the kernel scheduler.
 
 Current limits: 64 KiB source, 256 KiB executable, 64 KiB combined string/global
 data, 16,384 tokens, 128 functions, 128 globals, 256 simultaneously visible
@@ -133,11 +135,83 @@ File byte counts and offsets are bytes, unlike the older C kernel sector API.
 | `file_create(char *name)` | Creates an empty file; 0 or -1 if it exists/cannot be created. |
 | `sleep(int milliseconds)` | Waits 0..60,000 ms; 0 or -1. |
 | `execute(char *command)` | Executes a command and returns its exit status. |
+| `thread_start(void *entry, int argument)` | Starts a worker; returns a positive thread ID or -1. |
+| `thread_join(int id)` | Waits for a worker and consumes its handle; returns its result or -1 for an invalid handle/self-join. |
+| `thread_yield()` | Gives other runnable threads a turn; 0. |
+| `thread_sleep(int milliseconds)` | Sleeps 0..60,000 ms; 0 or -1. Zero yields. |
+| `thread_id()` | Current thread ID; the foreground thread is 0. |
+| `thread_count()` | Number of live user workers. |
+| `mutex_create()` | Creates a command-owned mutex; positive handle or -1. |
+| `mutex_lock(int id)` | Waits for a mutex; 0 or -1 for an invalid/recursive lock. |
+| `mutex_unlock(int id)` | Releases a mutex held by this thread; 0 or -1. |
+| `clock_time()` | Seconds since midnight, 0..86,399. |
+| `status_position()` | 0 for top, 1 for bottom. |
+| `settings_apply(int seconds, int position, int attribute)` | Saves and applies clock/bar/color settings; 0 or -1. Requires different foreground/background colors. |
 
 Text attributes use the upper nibble for background and lower nibble for
 foreground. Pixel colors use the existing 0..15 palette. Graphics calls return
 -1 if there is no framebuffer or the coordinates/color are invalid.
 Callers provide appropriately sized buffers for memory and file operations.
+The 12-pixel status bar is reserved: drawing into its active top/bottom margin
+returns -1. Clearing the screen preserves the bar. `begin_update`/`end_update`
+batch text cells; the clock/status bar continues updating independently.
+
+## Threads
+
+The kernel schedules threads on one CPU with a 5 ms timer quantum. Each worker
+has a separate 64 KiB stack; programs share their code, globals, heap, filesystem,
+and console. Up to 13 user workers can exist at once. This provides concurrency
+on the existing shared address space; there is no process isolation, SMP
+scheduling, or floating-point context support.
+
+    int worker(int value) {
+        thread_sleep(100);
+        return value * 2;
+    }
+    int main() {
+        int id = thread_start(worker, 21);
+        if (id < 0) return 1;
+        print_dec(thread_join(id));
+        newline();
+        return 0;
+    }
+
+The function must return `int` and take one `int` argument. A function name
+evaluates to its thread entry wrapper; it can also be stored in a `void*`.
+Arguments can carry 32-bit values or pointers cast to `int`. Use a mutex to
+protect shared read/modify/write operations such as `total++`; `threads.sz`
+demonstrates this. Mutexes are nonrecursive and belong to the current command.
+
+The command waits for all its workers before unloading its executable and
+reclaiming its heap, even if `main` returns without joining. Joined handles
+become invalid and their slots can be reused. A returning worker releases any
+mutexes it still holds. All command-owned mutexes are discarded when it exits.
+
+Kernel API operations on files, memory, and text are serialized across workers.
+Use a mutex around a multi-call console update to keep related output together.
+`sleep` also uses the scheduler. Keyboard input, `execute`, and `settings_apply`
+are reserved for the foreground thread; workers receive an error for these
+calls. Host-built C workers use `int entry(env_vars_t *env, uint32_t argument)`
+and call shared services through `env->api`.
+
+## Status bar and settings
+
+The status bar shows `SystemZero  v0.1.0`, the current command with arguments,
+and a 24-hour `HH:MM:SS` clock. Nested commands restore their parent's title
+when they finish; the idle title is `shell`. Long command titles are shortened
+with an ellipsis while the clock stays visible.
+
+Run `settings` to open the graphical settings screen. Tab/Shift+Tab selects
+hours, minutes, seconds, bar position, foreground, or background. Arrow keys
+adjust a field; digits enter clock values. The two color palettes show all
+16 colors and a live text preview. Enter saves; Escape cancels and restores the
+previous console. The framebuffer retains its 96×48 text grid; the VGA fallback
+reserves one row and provides an 80×24 text viewport.
+
+Settings are saved atomically in `systemzero.cfg` on the system drive and
+survive builds and reboots. The clock initializes from the hardware RTC, plus
+a saved time offset, so it continues advancing between boots. Invalid saved
+settings are ignored. The version string is defined in `shared/version.h`.
 
 ## Native API and ELF interface
 

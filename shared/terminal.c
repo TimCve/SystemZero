@@ -32,6 +32,7 @@ int terminal_init(terminal_t *t, volatile uint32_t *pixels, uint32_t width,
     t->cursor = 0; t->shown_cursor = TERM_NO_CURSOR; t->updates = 0;
     t->color = color; t->scrolling = 1; t->cursor_visible = 1;
     t->clear_canvas = 0;
+    t->reserved_top = t->reserved_bottom = 0;
     t->rendered_cells = t->presentations = 0;
     for (uint32_t y = 0; y < height; y++)
         for (uint32_t x = 0; x < width; x++) t->pixels[y * pitch + x] = terminal_palette(color >> 4);
@@ -50,8 +51,9 @@ void terminal_present(terminal_t *t) {
         /* Clear margins too, including pixels drawn outside the text viewport. */
         for (uint32_t y = 0; y < t->height; y++)
             for (uint32_t x = 0; x < t->width; x++)
-                if (y < t->origin_y || y >= t->origin_y + TERM_ROWS * TERM_CELL_HEIGHT ||
-                    x < t->origin_x || x >= t->origin_x + TERM_COLS * TERM_FONT_WIDTH)
+                if (y >= t->reserved_top && y < t->height - t->reserved_bottom &&
+                    (y < t->origin_y || y >= t->origin_y + TERM_ROWS * TERM_CELL_HEIGHT ||
+                    x < t->origin_x || x >= t->origin_x + TERM_COLS * TERM_FONT_WIDTH))
                     t->pixels[y * t->pitch + x] = terminal_palette(t->color >> 4);
         t->clear_canvas = 0;
     }
