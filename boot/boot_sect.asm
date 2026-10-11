@@ -20,10 +20,10 @@ mov dl, [BOOT_DRIVE]
 mov ah, 0x42
 int 0x13
 jc failure
-; Preserve the BIOS 8x16 font before entering protected mode.
+; Preserve the BIOS 8x8 font before entering protected mode.
 push ds
 mov ax, 0x1130
-mov bh, 6
+mov bh, 3
 int 0x10
 mov si, bp
 mov ax, es
@@ -31,7 +31,7 @@ mov ds, ax
 mov ax, 0x8000
 mov es, ax
 xor di, di
-mov cx, 4096
+mov cx, 2048
 cld
 rep movsb
 pop ds

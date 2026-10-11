@@ -10,13 +10,17 @@
 static void render(const text_buffer_t *buffer, uint8_t color, int dirty, const char *notice) {
     screen_begin_update();
     text_render(buffer->data, buffer->size, buffer->top, buffer->cursor, color);
-    for (uint32_t col = 0; col < COLS; col++) screen_put_cell(24, col, ' ', color);
-    screen_put_text(24, 0, "Ctrl+S: save | Ctrl+R: top | Esc: quit", color);
-    screen_put_text(24, 38, notice && *notice ? notice : dirty ? "* Modified" : "Ready.", color);
+    uint32_t footer = ROWS - 1, columns = COLS;
+    for (uint32_t col = 0; col < columns; col++) screen_put_cell(footer, col, ' ', color);
+    screen_put_text(footer, 0, "Ctrl+S: save | Ctrl+R: top | Esc: quit", color);
+    const char *status = notice && *notice ? notice : dirty ? "* Modified" : "Ready.";
+    uint32_t length = strlen((char *)status);
+    screen_put_text(footer, length < columns - 38 ? columns - length : 38, status, color);
     screen_end_update();
 }
 int main(env_vars_t *env, char *args) {
     select_drive(env->selected_drive); set_term_color(env->term_color);
+    text_set_geometry(COLS, ROWS);
     char filename[512]; char *part = splice(args, 1, ' '); memcpy(filename, part, strlen(part) + 1);
     inode_t info = get_file_info(filename);
     if (!info.valid) { print("File not found."); print_newline(); return 1; }
@@ -38,10 +42,11 @@ int main(env_vars_t *env, char *args) {
             } else if (key == END) { buffer.cursor = buffer.size; buffer.goal_valid = 0; }
             else continue;
         } else if (key == U_ARROW || key == D_ARROW || key == PGUP || key == PGDN) {
-            int rows = key == U_ARROW ? -1 : key == D_ARROW ? 1 : key == PGUP ? -24 : 24;
+            int page_rows = ROWS - 1;
+            int rows = key == U_ARROW ? -1 : key == D_ARROW ? 1 : key == PGUP ? -page_rows : page_rows;
             text_move_rows(&buffer, rows);
-            if (key == PGUP) buffer.top = text_previous_lines(file, buffer.size, buffer.top, 24);
-            if (key == PGDN) for (uint32_t i = 0; i < 24; i++) {
+            if (key == PGUP) buffer.top = text_previous_lines(file, buffer.size, buffer.top, page_rows);
+            if (key == PGDN) for (int i = 0; i < page_rows; i++) {
                 text_line_t line = text_line(file, buffer.size, buffer.top);
                 if (!line.has_next) break;
                 buffer.top = line.next;

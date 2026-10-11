@@ -5,6 +5,10 @@
 #include "video.h"
 
 static terminal_t *display;
+#define VGA_COLS 80
+#define VGA_ROWS 25
+uint32_t screen_rows(void) { return display ? TERM_ROWS : VGA_ROWS; }
+uint32_t screen_columns(void) { return display ? TERM_COLS : VGA_COLS; }
 void screen_bind_env(env_vars_t *env) { display = env ? env->terminal : 0; }
 int screen_init(env_vars_t *env) {
     static terminal_t terminal;
@@ -20,7 +24,7 @@ void screen_put_cell(uint32_t row, uint32_t col, uint8_t ch, uint8_t color) {
     if (display) { terminal_cell(display, row, col, ch, color); terminal_present(display); }
     else {
         volatile uint8_t *video = (void *)VIDEO_ADDRESS;
-        uint32_t index = (row * COLS + col) * 2; video[index] = ch; video[index + 1] = color;
+        uint32_t index = (row * VGA_COLS + col) * 2; video[index] = ch; video[index + 1] = color;
     }
 }
 void screen_put_text(uint32_t row, uint32_t col, const char *text, uint8_t color) {
@@ -67,7 +71,7 @@ void clear() {
 	if (display) { terminal_clear(display); return; }
 	char* video_memory = (char*) VIDEO_ADDRESS;
 
-	for(int i = 0; i < COLS * ROWS * 2; i += 2) {
+	for(int i = 0; i < VGA_COLS * VGA_ROWS * 2; i += 2) {
 		video_memory[i] = 0x00;
 		video_memory[i + 1] = term_color;
 	}	
@@ -80,17 +84,17 @@ int scroll_terminal() {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
 
-	if(cursor_pos >= (ROWS * COLS) * 2) {
-		for(int i = COLS * 2; i < (ROWS * COLS) * 2; i++) {
-			video_memory[i - (COLS * 2)] = video_memory[i];
+	if(cursor_pos >= (VGA_ROWS * VGA_COLS) * 2) {
+		for(int i = VGA_COLS * 2; i < (VGA_ROWS * VGA_COLS) * 2; i++) {
+			video_memory[i - (VGA_COLS * 2)] = video_memory[i];
 		}
 
-		for(int i = ((COLS * (ROWS - 1)) * 2); i < (ROWS * COLS) * 2; i += 2) {
+		for(int i = ((VGA_COLS * (VGA_ROWS - 1)) * 2); i < (VGA_ROWS * VGA_COLS) * 2; i += 2) {
 			video_memory[i] = 0x00;
 			video_memory[i + 1] = term_color;
 		}
 
-		set_cursor_position(COLS * (ROWS - 1) * 2);
+		set_cursor_position(VGA_COLS * (VGA_ROWS - 1) * 2);
 		return 1;
 	} else return 0;
 }
@@ -103,6 +107,7 @@ int print_char(char ch) {
 	char* video_memory = (char*) VIDEO_ADDRESS;
 	int cursor_pos = get_cursor_position();
 
+	if (cursor_pos >= VGA_COLS * VGA_ROWS * 2) return 0;
 	video_memory[cursor_pos] = ch;
 	video_memory[cursor_pos + 1] = term_color;
 	cursor_pos += 2;
@@ -151,8 +156,8 @@ void print_hex(int num) {
 // new line & carriage return
 int print_newline() {
     if (display) return terminal_char(display, '\n');
-    int row = get_cursor_position() / (COLS * 2);
-    set_cursor_position((row + 1) * COLS * 2);
+    int row = get_cursor_position() / (VGA_COLS * 2);
+    set_cursor_position((row + 1) * VGA_COLS * 2);
     return scrolling_enabled ? scroll_terminal() : 0;
 }
 

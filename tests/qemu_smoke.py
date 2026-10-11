@@ -2,6 +2,7 @@
 """Exercise the guest through QMP, using a disposable copy of its disk."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,11 +11,20 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+def display_defines(path):
+    return {name: int(value) for name, value in
+            re.findall(r"^#define (\w+) (\d+)u$", (ROOT / path).read_text(), re.MULTILINE)}
+
+TERMINAL = display_defines("shared/terminal.h")
+VIDEO = display_defines("kernel/drivers/io/video.h")
+COLS, ROWS = TERMINAL["TERM_COLS"], TERMINAL["TERM_ROWS"]
+FONT_HEIGHT, CELL_HEIGHT = TERMINAL["TERM_FONT_HEIGHT"], TERMINAL["TERM_CELL_HEIGHT"]
+FONT_TOP = TERMINAL["TERM_FONT_TOP"]
 
 class Guest:
-    def __init__(self, image, scratch, extra=None):
+    def __init__(self, image, scratch, extra=None, vga="std"):
         self.scratch = Path(scratch)
-        args = ["qemu-system-i386", "-m", "64M", "-vga", "std", "-display", "none", "-serial", "none",
+        args = ["qemu-system-i386", "-m", "64M", "-vga", vga, "-display", "none", "-serial", "none",
                 "-no-reboot", "-drive", f"format=raw,file={image},index=0", "-qmp", "stdio"]
         if extra:
             args += ["-drive", f"format=raw,file={extra},index=1"]
@@ -51,9 +61,10 @@ class Guest:
         return struct.unpack("<I", self.memory(self.env_address + 20, 4))[0]
 
     def screen(self):
-        address = self.terminal_address() or 0xb8000
-        chars = self.memory(address, 4000)[::2].replace(b"\x00", b" ").decode("cp437")
-        return "\n".join(chars[i:i + 80] for i in range(0, 2000, 80))
+        address = self.terminal_address()
+        columns, rows = (COLS, ROWS) if address else (80, 25)
+        chars = self.memory(address or 0xb8000, columns * rows * 2)[::2].replace(b"\x00", b" ").decode("cp437")
+        return "\n".join(chars[i:i + columns] for i in range(0, columns * rows, columns))
 
     def screenshot(self, path):
         self.command("screendump", {"filename": str(Path(path).resolve()), "format": "png"})
@@ -61,7 +72,7 @@ class Guest:
     def terminal_state(self):
         address = self.terminal_address()
         assert address, "Framebuffer terminal was not initialized"
-        values = struct.unpack("<12I4B", self.memory(address + 8000, 52))
+        values = struct.unpack("<12I4B", self.memory(address + COLS * ROWS * 4, 52))
         return dict(zip(("pixels", "font", "width", "height", "pitch", "origin_x", "origin_y",
                          "cursor", "shown_cursor", "updates", "rendered", "presentations",
                          "color", "scrolling", "visible", "clear_canvas"), values))
@@ -105,23 +116,24 @@ class Guest:
         while time.monotonic() < deadline:
             screen = self.screen()
             state = self.terminal_state()
-            row = state["cursor"] // 80
+            row = state["cursor"] // COLS
             lines = screen.splitlines()
+            start = screen.rfind("> " + text)
+            tail = screen[start + len(text) + 2:] if start >= 0 else ""
             # Long output can scroll the command echo away; the live cursor identifies
             # the new shell prompt, with this command's status immediately above it.
-            if 0 < row < 25 and state["cursor"] % 80 == 6 and \
+            if 0 < row < ROWS and state["cursor"] % COLS == 6 and \
                     lines[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>") and \
                     lines[row - 1].strip() == expected:
                 print(f"PASS guest: {text}", flush=True)
-                return screen
+                # A taller screen retains previous listings; return this command's output.
+                return tail if start >= 0 else screen
             if text == "cls" and screen.startswith(expected) and screen.splitlines()[1].strip() == "IDE0>":
                 print("PASS guest: cls", flush=True)
                 return screen
-            start = screen.rfind("> " + text)
-            tail = screen[start + len(text) + 2:] if start >= 0 else ""
             if expected in tail and "IDE" in tail[tail.index(expected) + len(expected):]:
                 print(f"PASS guest: {text}", flush=True)
-                return screen
+                return tail
             time.sleep(.1)
         raise AssertionError(f"Command {text!r} did not finish with {expected!r}:\n{screen}")
 
@@ -147,27 +159,33 @@ def main():
         editable = Path(scratch) / "editable"
         editable.write_bytes(b"abc")
         multiline = Path(scratch) / "multiline"
-        multiline.write_bytes(b"".join(f"line{i:02d}\n".encode() for i in range(60)))
+        multiline.write_bytes(b"".join(f"line{i:02d}\n".encode() for i in range(ROWS * 2)))
+        wrapping = Path(scratch) / "wrapping"
+        wrapping.write_bytes(b"a" * (COLS - 1) + b"bcd")
         for name, source in (("large", ROOT / "build/tests/large.elf"), ("binary", binary),
-                             ("invalid", invalid), ("editing", editable), ("multiline", multiline)):
+                             ("invalid", invalid), ("editing", editable), ("multiline", multiline),
+                             ("wrapping", wrapping)):
             subprocess.run([writer, "--replace", str(image), name, str(source)], check=True)
         guest = Guest(image, scratch, extra)
         try:
             print(guest.wait_for("IDE0>"), flush=True)
             state = guest.terminal_state()
-            assert (state["width"], state["height"], state["pitch"]) == (640, 480, 640)
-            assert any(guest.memory(state["font"], 4096)), "BIOS font was not preserved"
+            assert (state["width"], state["height"], state["pitch"]) == (
+                VIDEO["VIDEO_WIDTH"], VIDEO["VIDEO_HEIGHT"], VIDEO["VIDEO_WIDTH"])
+            assert any(guest.memory(state["font"], 256 * FONT_HEIGHT)), "BIOS font was not preserved"
             guest.screenshot(ROOT / "build/graphics-shell.png")
-            assert struct.unpack(">II", (ROOT / "build/graphics-shell.png").read_bytes()[16:24]) == (640, 480)
+            assert struct.unpack(">II", (ROOT / "build/graphics-shell.png").read_bytes()[16:24]) == (
+                VIDEO["VIDEO_WIDTH"], VIDEO["VIDEO_HEIGHT"])
             cell = guest.memory(guest.terminal_address(), 2)
             assert cell == b"K\x1f"
-            glyph = guest.memory(state["font"] + ord("K") * 16, 16)
+            glyph = guest.memory(state["font"] + ord("K") * FONT_HEIGHT, FONT_HEIGHT)
             origin = state["origin_y"] * state["pitch"] + state["origin_x"]
-            pixels = guest.memory(state["pixels"] + origin * 4, 16 * state["pitch"] * 4)
-            for y in range(16):
+            pixels = guest.memory(state["pixels"] + origin * 4, CELL_HEIGHT * state["pitch"] * 4)
+            for y in range(CELL_HEIGHT):
                 for x in range(8):
                     value = struct.unpack_from("<I", pixels, (y * state["pitch"] + x) * 4)[0]
-                    assert value == (0xffffff if glyph[y] & (0x80 >> x) else 0x0000aa)
+                    ink = FONT_TOP <= y < FONT_TOP + FONT_HEIGHT and glyph[y - FONT_TOP] & (0x80 >> x)
+                    assert value == (0xffffff if ink else 0x0000aa)
             initial_heap = guest.heap_pointer()
             screen = guest.run("list")
             for name in ("chain", "copy", "list", "read", "manual.txt"):
@@ -201,6 +219,7 @@ def main():
                 guest.run("drive 0")
             guest.type("edit editing")
             guest.wait_for("Ctrl+S: save")
+            assert "Ctrl+S: save" in guest.screen().splitlines()[ROWS - 1]
             before = guest.terminal_state()["rendered"]
             guest.key("shift")
             assert guest.terminal_state()["rendered"] == before, "Modifier keys repainted the editor"
@@ -225,14 +244,23 @@ def main():
             guest.key("esc"); guest.wait_for("IDE0>")
             guest.type("edit multiline"); guest.wait_for("Ctrl+S: save")
             guest.key("pgdn")
-            assert guest.wait_for("line24").startswith("line24"), "Page Down did not move a full page"
+            page_start = f"line{ROWS - 1:02d}"
+            assert guest.wait_for(page_start).startswith(page_start), "Page Down did not move a full page"
             guest.key("pgup")
             assert guest.wait_for("line00").startswith("line00")
             guest.key("end"); guest.key("down"); guest.key("z"); guest.key("ctrl", "s")
             guest.wait_for("Saved."); guest.key("esc"); guest.wait_for("IDE0>")
+            guest.type("edit wrapping"); guest.wait_for("Ctrl+S: save")
+            lines = guest.screen().splitlines()
+            assert lines[0] == "a" * (COLS - 1) + "b" and lines[1].startswith("cd")
+            guest.key("ctrl", "end")
+            assert guest.terminal_state()["cursor"] == COLS + 2
+            guest.key("z"); guest.key("ctrl", "s"); guest.wait_for("Saved.")
+            guest.key("esc"); guest.wait_for("IDE0>")
             guest.type("hexedit binary"); guest.wait_for("w: save")
             guest.key("pgdn")
-            assert "00000160:" in guest.wait_for("00000160:"), "Hex Page Down did not move a full page"
+            hex_page = f"{16 * (ROWS - 3):08X}:"
+            assert hex_page in guest.wait_for(hex_page), "Hex Page Down did not move a full page"
             guest.key("pgup"); guest.wait_for("00000000:")
             guest.key("esc"); guest.wait_for("IDE0>")
             guest.type("view editing")
@@ -263,6 +291,22 @@ def main():
         subprocess.run([writer, "--extract", str(image), "multiline", str(output)], check=True)
         expected = multiline.read_bytes().replace(b"line01\n", b"line01z\n", 1)
         assert output.read_bytes() == expected, "Text editor navigation saved at the wrong position"
+        subprocess.run([writer, "--extract", str(image), "wrapping", str(output)], check=True)
+        assert output.read_bytes() == wrapping.read_bytes() + b"z", "Editing after a soft wrap saved at the wrong position"
+        # An unsupported VGA adapter must keep its original text geometry and footer.
+        guest = Guest(image, scratch, vga="cirrus")
+        try:
+            guest.wait_for("IDE0>"); assert not guest.terminal_address()
+            guest.type("edit multiline"); guest.wait_for("Ctrl+S: save")
+            assert "Ctrl+S: save" in guest.screen().splitlines()[24]
+            guest.key("pgdn"); assert guest.wait_for("line24").startswith("line24")
+            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.type("hexedit binary"); guest.wait_for("w: save")
+            guest.key("pgdn"); guest.wait_for("00000160:")
+            guest.key("esc"); guest.wait_for("IDE0>")
+            print("PASS guest: legacy text console geometry and editors", flush=True)
+        finally:
+            guest.close()
         formatted = Path(scratch) / "formatted-system.bin"
         shutil.copyfile(ROOT / "os-image.bin", formatted)
         guest = Guest(formatted, scratch)

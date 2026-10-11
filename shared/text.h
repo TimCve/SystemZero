@@ -8,6 +8,8 @@ typedef struct {
     uint32_t size, capacity, cursor, top, goal_column;
     int goal_valid;
 } text_buffer_t;
+/* Configure the editor viewport once, including the reserved footer row. */
+void text_set_geometry(uint32_t columns, uint32_t rows);
 uint32_t text_advance(uint32_t column, uint8_t ch);
 text_line_t text_line(const uint8_t *data, uint32_t size, uint32_t start);
 uint32_t text_line_start(const uint8_t *data, uint32_t size, uint32_t position);

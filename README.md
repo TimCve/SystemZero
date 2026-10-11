@@ -22,8 +22,10 @@ The boot path uses BIOS and IDE disks. The supplied QEMU commands provide
 64 MiB of RAM; the loader requires at least 16 MiB. The allocator uses a checked
 region from 1 MiB to 16 MiB. UEFI boot and physical hardware have not been tested.
 
-The QEMU targets select standard VGA and use a 640×480, 32-bit framebuffer.
-Text is rendered with the BIOS 8×16 bitmap font in a centred 80×25 terminal.
+The QEMU targets select standard VGA and use an 800×600, 32-bit framebuffer.
+Text uses the compact BIOS 8×8 bitmap font with 12-pixel line spacing in a
+centred 96×48 terminal. Small margins and space between lines keep the denser
+layout readable; text editing and viewing show 47 content lines per page.
 The character buffer, colours, scrolling, and software cursor are shared across
 commands. Systems without a supported standard VGA adapter retain the text-mode
 console. The driver follows QEMU's [standard VGA interface](https://www.qemu.org/docs/master/specs/standard-vga.html).

@@ -2,11 +2,14 @@
 #define SYSTEMZERO_TERMINAL_H
 #include <stdint.h>
 
-#define TERM_COLS 80u
-#define TERM_ROWS 25u
+#define TERM_COLS 96u
+#define TERM_ROWS 48u
 #define TERM_CELLS (TERM_COLS * TERM_ROWS)
 #define TERM_FONT_WIDTH 8u
-#define TERM_FONT_HEIGHT 16u
+#define TERM_FONT_HEIGHT 8u
+/* Two pixels above and below each glyph keep the compact font readable. */
+#define TERM_CELL_HEIGHT 12u
+#define TERM_FONT_TOP 2u
 #define TERM_NO_CURSOR 0xffffffffu
 
 typedef struct { uint8_t ch, color; } terminal_cell_t;

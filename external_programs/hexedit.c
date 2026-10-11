@@ -7,8 +7,9 @@
 #include "../kernel/libc/strings.h"
 #include "../kernel/drivers/utils/mem.h"
 #define HEX_COLUMNS 16u
-#define HEX_ROWS 22u
+#define HEX_ROWS (ROWS - 3u)
 #define HEX_PAGE (HEX_COLUMNS * HEX_ROWS)
+#define ASCII_BORDER (10u + HEX_COLUMNS * 3u + 1u)
 static char digit(uint8_t value) { return "0123456789ABCDEF"[value & 15]; }
 static void render(const uint8_t *data, uint32_t size, uint32_t offset, uint32_t cursor,
                    const char *filename, uint8_t color, int dirty, const char *notice) {
@@ -20,7 +21,8 @@ static void render(const uint8_t *data, uint32_t size, uint32_t offset, uint32_t
         uint32_t address = offset + row * HEX_COLUMNS;
         for (uint32_t i = 0; i < 8; i++) screen_put_cell(row + 1, i, digit(address >> ((7 - i) * 4)), color);
         screen_put_text(row + 1, 8, ": ", color);
-        screen_put_cell(row + 1, 59, '|', color); screen_put_cell(row + 1, 76, '|', color);
+        screen_put_cell(row + 1, ASCII_BORDER, '|', color);
+        screen_put_cell(row + 1, ASCII_BORDER + HEX_COLUMNS + 1, '|', color);
         for (uint32_t col = 0; col < HEX_COLUMNS; col++) {
             uint32_t pos = address + col;
             uint8_t attr = pos == cursor ? (color << 4) | (color >> 4) : color;
@@ -31,18 +33,19 @@ static void render(const uint8_t *data, uint32_t size, uint32_t offset, uint32_t
             } else if (pos == cursor) high = low = '-';
             screen_put_cell(row + 1, 10 + col * 3, high, attr);
             screen_put_cell(row + 1, 11 + col * 3, low, attr);
-            screen_put_cell(row + 1, 60 + col, ascii, attr);
+            screen_put_cell(row + 1, ASCII_BORDER + 1 + col, ascii, attr);
         }
     }
-    screen_put_text(23, 0, "Arrows/PgUp/PgDn: move | c: change | i: insert | d: delete | w: save | Esc", color);
-    screen_put_text(24, 0, notice && *notice ? notice : dirty ? "* Modified" : "Ready.", color);
+    screen_put_text(ROWS - 2, 0, "Arrows/PgUp/PgDn: move | c: change | i: insert | d: delete | w: save | Esc", color);
+    screen_put_text(ROWS - 1, 0, notice && *notice ? notice : dirty ? "* Modified" : "Ready.", color);
     screen_end_update();
 }
 static int ask_byte(uint8_t color, int calibration, uint8_t *value) {
     screen_begin_update();
-    for (uint32_t col = 0; col < COLS; col++) screen_put_cell(24, col, ' ', color);
-    screen_put_text(24, 0, "Byte value (hex): ", color);
-    set_cursor_position(24 * COLS * 2 + 17 * 2); screen_cursor_visible(1); screen_end_update();
+    uint32_t footer = ROWS - 1;
+    for (uint32_t col = 0; col < COLS; col++) screen_put_cell(footer, col, ' ', color);
+    screen_put_text(footer, 0, "Byte value (hex): ", color);
+    set_cursor_position(footer * COLS * 2 + 17 * 2); screen_cursor_visible(1); screen_end_update();
     char input[4] = {0};
     if (!kbd_readline(input, calibration, sizeof input)) return 0;
     int length = strlen(input);

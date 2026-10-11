@@ -5,8 +5,8 @@
 #include "../../../shared/terminal.h"
 
 #define VIDEO_ADDRESS 0xb8000
-#define ROWS 25
-#define COLS 80
+#define ROWS (screen_rows())
+#define COLS (screen_columns())
 
 #define REG_SCREEN_CTRL 0x3d4
 #define REG_SCREEN_DATA 0x3d5
@@ -25,6 +25,8 @@ int print_char(char ch);
 int get_cursor_position();
 void set_cursor_position(int offset);
 int screen_init(env_vars_t *env);
+uint32_t screen_rows(void);
+uint32_t screen_columns(void);
 void screen_bind_env(env_vars_t *env);
 void screen_begin_update(void);
 void screen_end_update(void);

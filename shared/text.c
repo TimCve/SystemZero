@@ -1,4 +1,10 @@
 #include "text.h"
+static uint32_t columns = TERM_COLS, rows = TERM_ROWS;
+void text_set_geometry(uint32_t width, uint32_t height) {
+    if (width && width <= TERM_COLS && height >= 2 && height <= TERM_ROWS) {
+        columns = width; rows = height;
+    }
+}
 uint32_t text_advance(uint32_t column, uint8_t ch) {
     return column + (ch == '\t' ? 4 - column % 4 : 1);
 }
@@ -7,7 +13,7 @@ text_line_t text_line(const uint8_t *data, uint32_t size, uint32_t start) {
     while (pos < size) {
         if (data[pos] == '\n') return (text_line_t){pos, pos + 1, column, 1};
         column = text_advance(column, data[pos++]);
-        if (column >= TERM_COLS) return (text_line_t){pos, pos, column, 1};
+        if (column >= columns) return (text_line_t){pos, pos, column, 1};
     }
     return (text_line_t){pos, pos, column, 0};
 }
@@ -22,7 +28,7 @@ uint32_t text_line_start(const uint8_t *data, uint32_t size, uint32_t position) 
 }
 uint32_t text_previous_lines(const uint8_t *data, uint32_t size, uint32_t start, uint32_t count) {
     if (!count) return start;
-    if (count > TERM_ROWS - 1) count = TERM_ROWS - 1;
+    if (count > rows - 1) count = rows - 1;
     uint32_t history[TERM_ROWS - 1], n = 0, pos = 0;
     while (pos < start) {
         history[n++ % count] = pos;
@@ -53,7 +59,7 @@ void text_move_rows(text_buffer_t *buffer, int rows) {
     uint32_t pos = start, column = 0;
     while (pos < line.end) {
         uint32_t next = text_advance(column, buffer->data[pos]);
-        if (next > buffer->goal_column || next >= TERM_COLS) break;
+        if (next > buffer->goal_column || next >= columns) break;
         column = next; pos++;
     }
     buffer->cursor = pos;
@@ -63,13 +69,13 @@ void text_ensure_visible(text_buffer_t *buffer) {
     buffer->top = text_line_start(buffer->data, buffer->size, buffer->top);
     if (line < buffer->top) { buffer->top = line; return; }
     uint32_t pos = buffer->top;
-    for (uint32_t row = 0; row < TERM_ROWS - 1; row++) {
+    for (uint32_t row = 0; row < rows - 1; row++) {
         if (pos == line) return;
         text_line_t current = text_line(buffer->data, buffer->size, pos);
         if (!current.has_next) break;
         pos = current.next;
     }
-    buffer->top = text_previous_lines(buffer->data, buffer->size, line, TERM_ROWS - 2);
+    buffer->top = text_previous_lines(buffer->data, buffer->size, line, rows - 2);
 }
 int text_insert(text_buffer_t *buffer, uint8_t ch) {
     if (buffer->size == buffer->capacity || buffer->cursor > buffer->size) return 0;
