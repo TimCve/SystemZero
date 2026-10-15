@@ -7,10 +7,11 @@
 /* Shared display state; the status bar owns the framebuffer margin. */
 typedef struct desktop {
     volatile uint32_t seconds, milliseconds, dirty;
-    uint8_t position, color, enabled, reserved;
+    uint8_t position, color, enabled, secondary_color;
     char command[STATUS_COMMAND];
     void (*refresh)(void);
     char bar[101];
+    uint8_t writing_secondary, vga_secondary[2000];
 } desktop_t;
 static inline int desktop_pixel_reserved(const desktop_t *d, uint32_t height, uint32_t y) {
     return d && d->enabled && (d->position ? y >= height - STATUS_HEIGHT : y < STATUS_HEIGHT);

@@ -1,0 +1,15 @@
+# Shell argument completion: COMMAND=paths, directories, or none.
+# Tab completes a common prefix; repeated Tab cycles matches (Shift+Tab reverses).
+# Rules apply to every argument. Edits take effect on the next completion.
+list=paths
+edit=paths
+zedit=paths
+hexedit=paths
+view=paths
+tree=paths
+cd=directories
+copy=paths
+del=paths
+mkdir=directories
+cc=paths
+ld=paths

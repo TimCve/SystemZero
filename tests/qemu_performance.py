@@ -20,8 +20,8 @@ def run(guest, command):
         screen = guest.screen()
         cursor = guest.terminal_state()["cursor"]
         row = cursor // COLS
-        if row < ROWS and cursor % COLS == 6 and \
-                screen.splitlines()[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>"):
+        if row < ROWS and cursor % COLS == len("DISK0p2> ") and \
+                screen.splitlines()[row].strip() in ("DISK0p2>", "DISK1>", "DISK2>", "DISK3>"):
             return time.monotonic() - start
         time.sleep(.01)
     raise AssertionError(f"Command {command!r} timed out:\n{screen}")
@@ -42,9 +42,9 @@ def main():
         guest = Guest(image, scratch)
         results = {}
         try:
-            guest.wait_for("IDE0>")
+            guest.boot_root()
             for command in ("list", "list", "list", "touch perf-new", "del perf-new",
-                            "copy 0:perf-source 0:perf-copy"):
+                            "copy sys:perf-source sys:perf-copy"):
                 elapsed = run(guest, command)
                 results.setdefault(command, []).append(elapsed)
                 print(f"{command}: {elapsed:.3f} s", flush=True)

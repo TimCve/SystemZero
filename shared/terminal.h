@@ -22,6 +22,15 @@ typedef struct {
     uint32_t cursor, shown_cursor, updates, rendered_cells, presentations;
     uint8_t color, scrolling, cursor_visible, clear_canvas;
     uint32_t reserved_top, reserved_bottom;
+    uint32_t red_first;
+    uint8_t writing_secondary, secondary[TERM_CELLS];
+    uint8_t wraps[TERM_ROWS];
+    void *overlay;
+    void (*before_present)(void *),(*after_present)(void *);
+    terminal_cell_t (*view_cell)(void *,uint32_t);
+    uint32_t (*view_cursor)(void *,uint32_t);
+    void (*save_row)(void *,const terminal_cell_t *,uint8_t);
+    uint8_t presenting;
 } terminal_t;
 
 int terminal_init(terminal_t *t, volatile uint32_t *pixels, uint32_t width,
@@ -35,4 +44,5 @@ int terminal_scroll(terminal_t *t);
 int terminal_char(terminal_t *t, uint8_t ch);
 void terminal_cursor(terminal_t *t, uint32_t index);
 uint32_t terminal_palette(uint8_t index);
+uint32_t terminal_color(const terminal_t *t, uint8_t index);
 #endif

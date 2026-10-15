@@ -1,4 +1,5 @@
 #include "ata.h"
+#include "block.h"
 #include "../utils/ports.h"
 #define BSY 0x80
 #define DRQ 0x08
@@ -9,8 +10,16 @@
 static uint16_t io_base = 0x1f0, ctrl_base = 0x3f6;
 static uint8_t drive, slave, last_error;
 static uint32_t capacities[4];
+static env_vars_t *environment;
+void ata_bind_env(env_vars_t *env) { environment=env; }
+static block_device_t *device(void) {
+    return environment && environment->disks && drive<4 ? &environment->disks->devices[drive] : 0;
+}
 void select_drive(uint8_t value) {
-    drive = value; slave = value & 1;
+    drive = value;
+    block_device_t *d=device();
+    if(d && d->kind==BLOCK_IDE) value=(uintptr_t)d->context;
+    slave = value & 1;
     io_base = value < 2 ? 0x1f0 : 0x170;
     ctrl_base = value < 2 ? 0x3f6 : 0x376;
 }
@@ -27,6 +36,8 @@ static int wait_status(int data) {
     last_error = 0xff; return 0;
 }
 int identify_drive(uint8_t code) {
+    block_device_t *d=device();
+    if(d) return d->sectors ? 1:0;
     if (drive >= 4) return 0;
     last_error = 0; capacities[drive] = 0;
     port_byte_out(ctrl_base, 2);
@@ -45,6 +56,7 @@ int identify_drive(uint8_t code) {
     return capacities[drive] ? 1 : 0;
 }
 uint32_t ata_sector_count(void) {
+    block_device_t *d=device(); if(d) return d->sectors;
     if (drive >= 4) return 0;
     if (!capacities[drive]) identify_drive(0xa0 | (slave << 4));
     return capacities[drive];
@@ -60,6 +72,11 @@ static int command(uint32_t lba, uint8_t count, uint8_t cmd) {
     port_byte_out(io_base + 7, cmd); delay(); return 1;
 }
 int read_sectors_ATA_PIO(void *target, uint32_t lba, uint8_t count) {
+    block_device_t *d=device();
+    if(d && d->transfer) {
+        if(!target || !count || lba>=d->sectors || count>d->sectors-lba) return 0;
+        return d->transfer(d->context,lba,count,target,0);
+    }
     if (!target || !command(lba, count, 0x20)) return 0;
     uint8_t *out = target;
     for (uint32_t s = 0; s < count; s++) {
@@ -73,6 +90,11 @@ int read_sectors_ATA_PIO(void *target, uint32_t lba, uint8_t count) {
     return wait_status(0);
 }
 int write_sectors_ATA_PIO(uint32_t lba, uint8_t count, const void *source) {
+    block_device_t *d=device();
+    if(d && d->transfer) {
+        if(!source || !count || lba>=d->sectors || count>d->sectors-lba) return 0;
+        return d->transfer(d->context,lba,count,(void *)source,1);
+    }
     if (!source || !command(lba, count, 0x30)) return 0;
     const uint8_t *in = source;
     for (uint32_t s = 0; s < count; s++) {
@@ -85,6 +107,7 @@ int write_sectors_ATA_PIO(uint32_t lba, uint8_t count, const void *source) {
     return wait_status(0);
 }
 int ata_flush(void) {
+    block_device_t *d=device(); if(d && d->sync) return d->sync(d->context);
     if (!ata_sector_count() || !wait_status(-1)) return 0;
     port_byte_out(io_base + 6, 0xe0 | (slave << 4)); delay();
     if (!wait_status(-1)) return 0;

@@ -4,8 +4,10 @@
 #include "../utils/mem.h"
 #include "../../env_vars.h"
 #include "video.h"
+#include "../../../shared/input.h"
 #include "../../../shared/desktop.h"
 #include "../../../shared/sys_api.h"
+#include "../../../shared/boot.h"
 
 static terminal_t *display;
 static desktop_t *desktop;
@@ -16,17 +18,22 @@ uint8_t term_color;
 #define VGA_ROWS 25
 static uint32_t vga_rows(void) { return desktop && desktop->enabled ? VGA_ROWS - 1 : VGA_ROWS; }
 static uint32_t vga_top(void) { return desktop && desktop->enabled && !desktop->position ? 1 : 0; }
-static volatile uint16_t *vga_cells(void) { return (volatile uint16_t *)VIDEO_ADDRESS + vga_top() * VGA_COLS; }
+static volatile uint16_t *vga_cells(void) {
+    input_runtime_t *u=ui(environment);
+    return u?(void *)u->console.vga:(volatile uint16_t *)VIDEO_ADDRESS+vga_top()*VGA_COLS;
+}
 struct screen_state {
     terminal_t *display;
     uint8_t color;
     int scrolling;
+    uint32_t has_console;
     union {
         terminal_t terminal;
         struct {
             uint16_t cells[VGA_COLS * VGA_ROWS];
             int cursor;
             uint8_t cursor_start, cursor_end;
+            uint8_t writing_secondary, secondary[VGA_COLS * VGA_ROWS];
         } vga;
     } saved;
     uint32_t pixels[];
@@ -34,9 +41,14 @@ struct screen_state {
 
 screen_state_t *screen_save_state(void) {
     uint32_t count = display ? display->pitch * display->height : 0;
-    if (count > (UINT32_MAX - sizeof(screen_state_t)) / sizeof(uint32_t)) return 0;
-    screen_state_t *state = (void *)malloc(sizeof(screen_state_t) + count * sizeof(uint32_t), 0, 0);
+    uint32_t extra=ui(environment)?sizeof(console_history_t):0;
+    if (count > (UINT32_MAX - sizeof(screen_state_t)-extra) / sizeof(uint32_t)) return 0;
+    screen_state_t *state = (void *)malloc(sizeof(screen_state_t) + count * sizeof(uint32_t)+extra, 0, 0);
     if (!state) return 0;
+    input_runtime_t *u=ui(environment);
+    if(u) { u->canvas_updates++; ui_paint(environment,0); }
+    state->has_console=!!u;
+    if(u) memcpy((void *)(state->pixels+count),&u->console,sizeof u->console);
     state->display = display;
     state->color = get_term_color();
     state->scrolling = display ? display->scrolling : scrolling_enabled;
@@ -46,17 +58,29 @@ screen_state_t *screen_save_state(void) {
     } else {
         volatile uint16_t *video = vga_cells();
         for (uint32_t i = 0; i < VGA_COLS * vga_rows(); i++) state->saved.vga.cells[i] = video[i];
+        if (desktop) {
+            state->saved.vga.writing_secondary = desktop->writing_secondary;
+            memcpy(state->saved.vga.secondary, desktop->vga_secondary, sizeof desktop->vga_secondary);
+        }
         state->saved.vga.cursor = get_cursor_position();
         port_byte_out(REG_SCREEN_CTRL, 10); state->saved.vga.cursor_start = port_byte_in(REG_SCREEN_DATA);
         port_byte_out(REG_SCREEN_CTRL, 11); state->saved.vga.cursor_end = port_byte_in(REG_SCREEN_DATA);
     }
+    if(u) { u->canvas_updates--; ui_paint(environment,1); }
     return state;
 }
 
 void screen_restore_state(const screen_state_t *state) {
     if (!state || state->display != display) return;
+    input_runtime_t *u=ui(environment);
+    if(u) {
+        u->canvas_updates++; ui_paint(environment,0);
+        uint32_t count=display?state->saved.terminal.pitch*state->saved.terminal.height:0;
+        if(state->has_console) memcpy(&u->console,(void *)(state->pixels+count),sizeof u->console);
+    }
     term_color = state->color;
     scrolling_enabled = state->scrolling;
+    if(u) u->scrolling=state->scrolling;
     if (display) {
         uint32_t rendered = display->rendered_cells, presentations = display->presentations;
         *display = state->saved.terminal;
@@ -73,10 +97,15 @@ void screen_restore_state(const screen_state_t *state) {
     } else {
         volatile uint16_t *video = vga_cells();
         for (uint32_t i = 0; i < VGA_COLS * vga_rows(); i++) video[i] = state->saved.vga.cells[i];
+        if (desktop) {
+            desktop->writing_secondary = state->saved.vga.writing_secondary;
+            memcpy(desktop->vga_secondary, state->saved.vga.secondary, sizeof desktop->vga_secondary);
+        }
         set_cursor_position(state->saved.vga.cursor);
         port_byte_out(REG_SCREEN_CTRL, 10); port_byte_out(REG_SCREEN_DATA, state->saved.vga.cursor_start);
         port_byte_out(REG_SCREEN_CTRL, 11); port_byte_out(REG_SCREEN_DATA, state->saved.vga.cursor_end);
     }
+    if(u) { u->canvas_updates--; ui_paint(environment,1); }
 }
 uint32_t screen_rows(void) { return display ? TERM_ROWS : vga_rows(); }
 uint32_t screen_columns(void) { return display ? TERM_COLS : VGA_COLS; }
@@ -93,25 +122,48 @@ void screen_idle(void) {
 }
 int screen_init(env_vars_t *env) {
     static terminal_t terminal;
-    volatile uint32_t *pixels = video_init();
+    const boot_info_t *boot = env->boot;
+    volatile uint32_t *pixels = boot ? (void *)boot->framebuffer : video_init();
     if (!pixels) {
         /* Use all sixteen VGA background colors instead of the attribute blink bit. */
         port_byte_in(0x3da); port_byte_out(0x3c0, 0x10);
         uint8_t mode = port_byte_in(0x3c1); port_byte_out(0x3c0, mode & ~8);
         port_byte_in(0x3da); port_byte_out(0x3c0, 0x20);
     }
-    if (!pixels || !terminal_init(&terminal, pixels, VIDEO_WIDTH, VIDEO_HEIGHT,
-                                  VIDEO_WIDTH, (void *)VIDEO_FONT_ADDRESS, env->term_color)) return 0;
+    if (!pixels || !terminal_init(&terminal, pixels, boot ? boot->width : VIDEO_WIDTH,
+                                  boot ? boot->height : VIDEO_HEIGHT, boot ? boot->pitch : VIDEO_WIDTH,
+                                  (void *)(boot ? boot->font : VIDEO_FONT_ADDRESS), env->term_color)) return 0;
+    if (boot && boot->red_first) { terminal.red_first = 1; terminal_clear(&terminal); }
     env->terminal = &terminal; screen_bind_env(env); return 1;
 }
-void screen_begin_update(void) { terminal_begin(display); }
-void screen_end_update(void) { terminal_end(display); }
+void screen_begin_update(void) {
+    if(display) terminal_begin(display);
+    else if(ui(environment)) { ui(environment)->vga_updates++; ui_paint(environment,0); }
+}
+void screen_secondary_text(int enabled) {
+    if (display) display->writing_secondary = !!enabled;
+    else if (desktop) desktop->writing_secondary = !!enabled;
+}
+void screen_end_update(void) {
+    if(display) terminal_end(display);
+    else if(ui(environment)) {
+        if(ui(environment)->vga_updates) ui(environment)->vga_updates--;
+        ui_paint(environment,1);
+    }
+}
+void screen_line_wrapped(uint32_t row,int wrap) {
+    if(row>=ROWS) return;
+    if(display) display->wraps[row]=!!wrap;
+    else if(ui(environment)) ui(environment)->console.vga_wraps[row]=!!wrap;
+}
 void screen_put_cell(uint32_t row, uint32_t col, uint8_t ch, uint8_t color) {
     if (row >= ROWS || col >= COLS) return;
     if (display) { terminal_cell(display, row, col, ch, color); terminal_present(display); }
     else {
         volatile uint8_t *video = (void *)vga_cells();
         uint32_t index = (row * VGA_COLS + col) * 2; video[index] = ch; video[index + 1] = color;
+        if (desktop) desktop->vga_secondary[index / 2] = desktop->writing_secondary;
+        ui_paint(environment,1);
     }
 }
 void screen_put_text(uint32_t row, uint32_t col, const char *text, uint8_t color) {
@@ -126,7 +178,12 @@ void screen_cursor_visible(int visible) {
 int screen_draw_pixel(uint32_t x, uint32_t y, uint8_t color) {
     if (!display || x >= display->width || y >= display->height ||
         y < display->reserved_top || y >= display->height - display->reserved_bottom) return 1;
-    display->pixels[y * display->pitch + x] = terminal_palette(color); return 0;
+    input_runtime_t *u=ui(environment); if(u) u->canvas_updates++;
+    ui_paint(environment,0);
+    display->pixels[y * display->pitch + x] = terminal_color(display, color);
+    if(u) u->canvas_updates--;
+    if(!display->updates) ui_paint(environment,1);
+    return 0;
 }
 
 void set_cursor_position(int offset);
@@ -145,9 +202,11 @@ uint8_t get_term_color() {
 }
 
 void set_scrolling(int value) {
+    if(value<=0) { ui_live(environment); ui_selection_clear(environment); }
 	if(value <= 0) scrolling_enabled = 0;
 	else if(value > 0) scrolling_enabled = 1;
 	if (display) display->scrolling = scrolling_enabled;
+    if(ui(environment)) ui(environment)->scrolling=scrolling_enabled;
 }
 
 // clears screen & sets cursor position to screen start
@@ -161,6 +220,7 @@ void clear() {
 	}	
 
 	set_cursor_position(0x00);
+    if (desktop) memset(desktop->vga_secondary, 0, sizeof desktop->vga_secondary);
 }
 
 int scroll_terminal() {
@@ -169,9 +229,20 @@ int scroll_terminal() {
 	int cursor_pos = get_cursor_position();
 
 	if(cursor_pos >= (int)(vga_rows() * VGA_COLS * 2)) {
+        input_runtime_t *u=ui(environment);
+        if(u) {
+            u->save(u->console.vga,u->console.vga_wraps[0]);
+            for(uint32_t i=1;i<vga_rows();i++) u->console.vga_wraps[i-1]=u->console.vga_wraps[i];
+            u->console.vga_wraps[vga_rows()-1]=0;
+        }
 		for(uint32_t i = VGA_COLS * 2; i < vga_rows() * VGA_COLS * 2; i++) {
 			video_memory[i - (VGA_COLS * 2)] = video_memory[i];
 		}
+        if (desktop) {
+            for (uint32_t i = VGA_COLS; i < vga_rows() * VGA_COLS; i++)
+                desktop->vga_secondary[i - VGA_COLS] = desktop->vga_secondary[i];
+            memset(desktop->vga_secondary + (vga_rows() - 1) * VGA_COLS, 0, VGA_COLS);
+        }
 
 		for(uint32_t i = VGA_COLS * (vga_rows() - 1) * 2; i < vga_rows() * VGA_COLS * 2; i += 2) {
 			video_memory[i] = 0x00;
@@ -194,6 +265,8 @@ int print_char(char ch) {
 	if (cursor_pos >= (int)(VGA_COLS * vga_rows() * 2)) return 0;
 	video_memory[cursor_pos] = ch;
 	video_memory[cursor_pos + 1] = term_color;
+    if (desktop) desktop->vga_secondary[cursor_pos / 2] = desktop->writing_secondary;
+	if(cursor_pos/2%VGA_COLS==VGA_COLS-1) screen_line_wrapped(cursor_pos/2/VGA_COLS,1);
 	cursor_pos += 2;
 	set_cursor_position(cursor_pos);
 
@@ -241,6 +314,7 @@ void print_hex(int num) {
 int print_newline() {
     if (display) return terminal_char(display, '\n');
     int row = get_cursor_position() / (VGA_COLS * 2);
+    screen_line_wrapped(row,0);
     set_cursor_position((row + 1) * VGA_COLS * 2);
     return scrolling_enabled ? scroll_terminal() : 0;
 }
@@ -272,4 +346,5 @@ void set_cursor_position(int offset) {
 
 	port_byte_out(REG_SCREEN_CTRL, 15);
 	port_byte_out(REG_SCREEN_DATA, offset & 0xff);
+    ui_paint(environment,1);
 }

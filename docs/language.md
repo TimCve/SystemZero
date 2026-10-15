@@ -1,240 +1,450 @@
-# Programming inside SystemZero
+# Programming in SystemZero
 
-`cc` compiles a small C-like language into native, position-independent ELF32
-executables. Compilation, saving, and execution all happen inside SystemZero.
-The compiler does not invoke GCC, an external assembler, or an interpreter.
+`cc` compiles C-like source to a native ELF32 executable. `ld` links objects
+and archives. Both commands run inside SystemZero and save files in the
+current directory.
 
-Four source examples are installed on the system disk: `hello.sz`, `files.sz`,
-`draw.sz`, and `threads.sz`. At the guest shell:
+## Quick start
 
-    cc hello.sz hello
-    hello
+From the default `/home` workspace:
 
-To write your own program:
+```text
+cc examples/hello.sz hello
+./hello
+```
 
-    touch greeting.sz
-    edit greeting.sz
+Create your own source with `touch greeting.sz` and `edit greeting.sz`:
 
-Enter the following text, save with Ctrl+S, and leave the editor with Escape:
+```c
+int main() {
+    print("Hello from SystemZero!\n");
+    return 0;
+}
+```
 
-    int main() {
-        print("Hello from SystemZero!\n");
-        return 0;
-    }
+Save with Ctrl+S, exit with Escape, then run:
 
-Then run:
+```text
+cc greeting.sz greeting
+./greeting
+```
 
-    cc greeting.sz greeting
-    greeting
+`PATH` defaults to `sys:/bin`. Local executables run as `./program`. Source and
+output must differ. Compile/link failures report an error and retain the
+output file. Compiler diagnostics include a source line and column.
 
-Source and output must have different names. `cc` reads and writes on the
-selected drive. The shell looks for executables on that drive first, then on
-the system drive, so the bundled compiler remains available on another drive.
-Output names do not require an extension.
+| Example               | Demonstrates                    |
+| --------------------- | ------------------------------- |
+| `examples/hello.sz`   | Functions and console output    |
+| `examples/files.sz`   | File creation and reading       |
+| `examples/draw.sz`    | Text cells, pixels, and lines   |
+| `examples/threads.sz` | Workers and mutexes             |
+| `examples/sdk.sz`     | Header includes and SDK linking |
 
-A compile error reports `filename:line:column: message`, returns status 1,
-and leaves an existing output untouched. A successful compile replaces the
-output through the filesystem's staged replacement operation.
+## Zedit
 
-## Language
+Run `zedit greeting.sz` to open or create source. The editor highlights keywords,
+strings, comments, numbers, function names, variables, and include directives.
+It uses the text editor's visual line wrapping, scrolling, and tab stops.
+The left gutter shows source line numbers; wrapped continuations leave it blank.
+Mouse placement and selection account for the gutter.
 
-Supported types are signed 32-bit `int`, unsigned byte `char`, `void`, and
-pointers to these types. Integer literals can be decimal or hexadecimal.
-Character and string literals accept `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\'`,
-and `\xHH`. Both `//` and `/* ... */` comments are supported.
+| Key                 | Action                                       |
+| ------------------- | -------------------------------------------- |
+| Ctrl+S              | Save                                         |
+| Click / drag        | Place caret / select source text             |
+| Ctrl+C / Ctrl+V     | Copy / paste, replacing selected text        |
+| Mouse wheel         | Scroll without moving the caret              |
+| F5                  | Save, compile, and run                       |
+| Ctrl+Space          | Open completion                              |
+| Up / Down           | Select a suggestion while completion is open |
+| Tab / Enter         | Accept a suggestion while completion is open |
+| Escape              | Dismiss completion; otherwise quit           |
+| Arrows, Home, End   | Move through the source                      |
+| Page Up / Page Down | Move one page                                |
+| Ctrl+Home / Ctrl+R  | Start of file                                |
+| Ctrl+End            | End of file                                  |
 
-Programs contain functions and optional global variables. Functions can call
-later definitions or recurse; prototypes are optional. A function takes at
-most eight scalar/pointer parameters. The entry function is either
-`int main()` / `int main(void)` or `int main(char *args)`. `args` is the complete
-command line, including the program name. Returning from `main` supplies the
-shell's exit status; falling off a function returns zero.
+Completion opens while typing an identifier with at least two characters. It
+lists visible variables and function names. The selected item shows a function
+signature or variable declaration, plus its origin: local function, parameter,
+variable, imported header path, or built-in kernel API. Imported declarations
+use the same local-header and `INCLUDE` lookup as `cc`, including `-I`.
+Copy preserves tabs and line breaks. The shared guest clipboard holds up to
+64 KiB and remains available after quitting the editor.
 
-Local and global scalar variables, comma-separated declarations, nested block
-scopes, and one-dimensional arrays with literal lengths are supported:
+The source index recognizes literal includes and declarations, and tolerates
+incomplete source; compiler diagnostics determine whether the program builds.
 
-    int sum = 0;
-    char buffer[128];
-    int numbers[4];
-    int *p = numbers;
-    p[0] = 10;
-    *(p + 1) = 20;
+F5 switches to a run console. A `.sz` file builds to the same path without that
+extension; other names build to `NAME.run`. The console runs the new executable
+only if compilation succeeds. Diagnostics and output stay visible until any
+key is pressed, then the editor restores its source, cursor, and scroll position.
+Programs can use interactive input and the graphics and thread APIs. Quitting
+the editor restores the console that opened it. Escape discards unsaved changes.
 
-Arrays decay to pointers when used in expressions. Address-of applies to
-scalar variables and array elements (`&sum`, `&numbers[0]`). Pointer arithmetic
-uses the size of the pointed-to type. Arithmetic/dereferencing on `void*` is
-rejected; use a cast to a typed pointer first.
+`zedit` links `system.a` by default, covering SDK `sz_*` functions. To choose
+other libraries or an include directory, pass the options after the source:
 
-Global scalar initializers must be literal numbers/characters, optionally
-signed. Global character arrays can use string initializers, including
-`char name[] = "example";`. Local scalar variables without initializers start
-at zero. Local arrays have no initializer syntax; assign their elements or
-use `memset`.
+```text
+zedit app.sz io.o -I headers
+zedit app.sz system.a helper.o
+```
 
-Statements include blocks, expression statements, `if/else`, `while`, `break`,
-`continue`, and `return`. Operators follow C precedence:
+Those arguments replace the default `system.a`. Built-ins require no linked
+object. `zedit` edits sources up to 64 KiB and indexes up to 512 symbols and
+32 header paths, with an include depth of eight. Hitting an index limit is
+reported in the footer.
 
-- Arithmetic: `+ - * / %`, unary `+ -`, prefix/postfix `++ --`.
-- Comparison: `== != < <= > >=`.
-- Bitwise: `& | ^ ~ << >>`; right shift of an integer is arithmetic.
-- Boolean: `! && ||`, with short-circuit evaluation and results of zero or one.
-- Assignment: `= += -= *= /= %=`.
-- Pointers/indexing: `&x`, `*p`, `p[index]`.
-- Explicit casts: `(char)value`, `(int)value`, `(char*)pointer`, and other
-  supported scalar/pointer types.
-- `sizeof` with a parenthesized type, such as `sizeof(int)` or `sizeof(char*)`.
+## Built-ins and linked functions
 
-Integer addition, subtraction, and multiplication keep the low 32 bits.
-Division is signed and truncates toward zero. Characters keep the low eight
-bits. Function arguments are evaluated left to right.
+All functions in the API tables below are built-ins. Their names are reserved;
+the compiler emits calls through the running kernel's service table. They need
+no header or library argument.
 
-The first version does not support preprocessing/includes, floating point,
-structures, general function-pointer declarations, multidimensional arrays, `for`, `switch`,
-variadic functions, or separate object/library files. Built-in kernel services
-are available by name without headers. User functions in the same source file
-are linked by the compiler.
-An `int worker(int argument)` function name can be passed to `thread_start`;
-the compiler emits an entry wrapper that connects it to the kernel scheduler.
+| Function form | Declaration             | Link input |
+| ------------- | ----------------------- | ---------- |
+| `print`       | Built into the compiler | None       |
+| `sz_print`    | `<systemzero/io.h>`      | `io.o`     |
 
-Current limits: 64 KiB source, 256 KiB executable, 64 KiB combined string/global
-data, 16,384 tokens, 128 functions, 128 globals, 256 simultaneously visible
-locals, and 16 KiB local storage per function. Nesting limits produce compile
-errors instead of exhausting the compiler's stack.
+`print` and `sz_print` call the same kernel operation. SDK objects provide
+explicit wrappers. See [libraries and linking](#libraries-and-linking).
 
-## Kernel services
+## Language syntax
 
-These names are reserved. `int` arguments/results and pointers are 32 bits.
-File byte counts and offsets are bytes, unlike the older C kernel sector API.
+### Types and functions
 
-| Call | Result |
-| --- | --- |
-| `print(char *text)` | Prints a NUL-terminated string; 0 on success. |
-| `print_dec(int value)` | Prints a signed decimal integer; 0. |
-| `print_hex(int value)` | Prints the unsigned bit pattern in hexadecimal; 0. |
-| `putchar(int ch)` | Prints one byte; returns that byte. |
-| `newline()` | Prints a newline; 0. |
-| `clear()` | Clears the display; 0. |
-| `set_color(int attribute)` | Sets the persistent terminal attribute (0..255); 0 or -1. |
-| `get_color()` | Current terminal attribute. |
-| `screen_rows()`, `screen_columns()` | Current text grid dimensions. |
-| `put_text(int row, int col, char *text, int attribute)` | Writes at text coordinates; 0 or -1. |
-| `put_cell(int row, int col, int ch, int attribute)` | Writes one text cell; 0 or -1. |
-| `begin_update()`, `end_update()` | Batch cell changes into one presentation; 0. |
-| `draw_pixel(int x, int y, int color)` | Writes a framebuffer pixel; 0 or -1. |
-| `draw_line(int x1, int y1, int x2, int y2, int color)` | Draws a line; 0 or -1. |
-| `alloc(int bytes)` | Returns `void*`, or 0 on failure. Memory lasts until the command returns. |
-| `memcpy(void *dest, void *source, int bytes)` | Copies bytes; returns destination, or 0 for an invalid count/null buffer. |
-| `memset(void *dest, int byte, int bytes)` | Fills bytes; returns destination, or 0 for an invalid count/null buffer. |
-| `strlen(char *text)` | String length, or -1 for a null pointer. |
-| `readline(char *buffer, int capacity)` | Reads and echoes a line; returns length or -1 on Escape/error. Capacity includes the terminator. |
-| `getchar()` | Waits for a character without echo; Enter is 10 and Escape is 27. |
-| `file_size(char *name)` | File size, or -1 if unavailable. |
-| `file_read(char *name, void *buffer, int bytes, int offset)` | Bytes read (0 at EOF), or -1 on failure. |
-| `file_write(char *name, void *buffer, int bytes)` | Creates/replaces a file, including binary zero bytes; 0 or -1. |
-| `file_delete(char *name)` | Deletes a file; 0 or -1. |
-| `file_create(char *name)` | Creates an empty file; 0 or -1 if it exists/cannot be created. |
-| `sleep(int milliseconds)` | Waits 0..60,000 ms; 0 or -1. |
-| `execute(char *command)` | Executes a command and returns its exit status. |
-| `thread_start(void *entry, int argument)` | Starts a worker; returns a positive thread ID or -1. |
-| `thread_join(int id)` | Waits for a worker and consumes its handle; returns its result or -1 for an invalid handle/self-join. |
-| `thread_yield()` | Gives other runnable threads a turn; 0. |
-| `thread_sleep(int milliseconds)` | Sleeps 0..60,000 ms; 0 or -1. Zero yields. |
-| `thread_id()` | Current thread ID; the foreground thread is 0. |
-| `thread_count()` | Number of live user workers. |
-| `mutex_create()` | Creates a command-owned mutex; positive handle or -1. |
-| `mutex_lock(int id)` | Waits for a mutex; 0 or -1 for an invalid/recursive lock. |
-| `mutex_unlock(int id)` | Releases a mutex held by this thread; 0 or -1. |
-| `clock_time()` | Seconds since midnight, 0..86,399. |
-| `status_position()` | 0 for top, 1 for bottom. |
-| `settings_apply(int seconds, int position, int attribute)` | Saves and applies clock/bar/color settings; 0 or -1. Requires different foreground/background colors. |
+| Type    | Representation        |
+| ------- | --------------------- |
+| `int`   | Signed 32-bit integer |
+| `char`  | Unsigned 8-bit byte   |
+| `void`  | No value              |
+| Pointer | 32-bit address        |
 
-Text attributes use the upper nibble for background and lower nibble for
-foreground. Pixel colors use the existing 0..15 palette. Graphics calls return
--1 if there is no framebuffer or the coordinates/color are invalid.
-Callers provide appropriately sized buffers for memory and file operations.
-The 12-pixel status bar is reserved: drawing into its active top/bottom margin
-returns -1. Clearing the screen preserves the bar. `begin_update`/`end_update`
-batch text cells; the clock/status bar continues updating independently.
+The entry is `int main()`, `int main(void)`, or `int main(char *args)`.
+`args` contains the complete command line. Returning from `main` sets the
+program's exit status; falling off a function returns zero.
+
+Functions support prototypes, recursion, and up to eight scalar/pointer
+arguments. Arguments are evaluated left to right. Variables may be local or
+global; declarations can contain multiple names. Blocks introduce local scopes.
+
+```c
+int count = 0;
+char name[] = "example";
+
+int square(int n) {
+    return n * n;
+}
+```
+
+### Arrays and pointers
+
+One-dimensional arrays use literal lengths. Arrays decay to pointers in
+expressions. `&` takes an address, `*` dereferences, and pointer arithmetic
+scales by the element size.
+
+```c
+int values[4];
+int *p = values;
+p[0] = 10;
+*(p + 1) = 20;
+```
+
+Local scalar variables start at zero. Initialize local arrays with assignments
+or `memset`. Global scalars accept literal initializers; global character
+arrays accept strings. Cast a `void*` to a typed pointer before dereferencing
+or doing pointer arithmetic.
+
+### Statements and operators
+
+Statements include blocks, expressions, `if/else`, `while`, `break`,
+`continue`, and `return`. Operators follow C precedence.
+
+| Category   | Operators                                        |
+| ---------- | ------------------------------------------------ |
+| Arithmetic | `+ - * / %`, unary `+ -`, prefix/postfix `++ --` |
+| Comparison | `== != < <= > >=`                                |
+| Bitwise    | `& \| ^ ~ << >>`                                 |
+| Boolean    | `! && \|\|`                                      |
+| Assignment | `= += -= *= /= %=`                               |
+| Pointers   | `&value`, `*pointer`, `pointer[index]`           |
+| Casts      | `(int)value`, `(char*)pointer`                   |
+| Size       | `sizeof(int)`, `sizeof(char*)`                   |
+
+Boolean operations short-circuit and produce 0 or 1. Integer arithmetic keeps
+32 bits; division truncates toward zero and integer right shifts are arithmetic.
+Characters keep the low eight bits.
+
+Numbers may be decimal or hexadecimal. Strings/characters support `\n`, `\r`,
+`\t`, `\0`, `\\`, `\"`, `\'`, and `\xHH`. Comments use `//` or `/* ... */`.
+
+Unsupported: floating point, structures, enums, multidimensional arrays,
+`for`, `switch`, variadic functions, and general function-pointer declarations.
+A worker function name can be passed to `thread_start` or stored in a `void*`.
+
+## Kernel API
+
+Parameters without a type annotation are `int`. Strings use NUL-terminated
+`char*`; memory buffers use `void*`. Results are `int` unless a pointer is shown.
+Text coordinates are zero-based rows/columns; graphics coordinates are pixels.
+File lengths, memory lengths, and file offsets are bytes. Supply buffers large
+enough for each operation.
+
+### Console input and output
+
+| Function    | Parameters       | Result                     |
+| ----------- | ---------------- | -------------------------- |
+| `print`     | `char *text`     | 0; -1 for null text        |
+| `print_dec` | `value`          | 0; prints signed decimal   |
+| `print_hex` | `value`          | 0; prints hexadecimal      |
+| `putchar`   | `ch`             | Printed byte               |
+| `newline`   | None             | 0                          |
+| `readline`  | `char *buf, cap` | Length; -1 on Escape/error |
+| `getchar`   | None             | Character code             |
+
+`readline` capacity includes the NUL terminator and must be 2-65,536 bytes.
+`getchar` does not echo; Enter is 10 and Escape is 27. Input is foreground-only.
+
+### Text display
+
+| Function         | Parameters                   | Result                    |
+| ---------------- | ---------------------------- | ------------------------- |
+| `clear`          | None                         | 0                         |
+| `set_color`      | `attr`                       | 0; -1 for invalid attr    |
+| `get_color`      | None                         | Current drawing attribute |
+| `screen_rows`    | None                         | Text grid height          |
+| `screen_columns` | None                         | Text grid width           |
+| `put_text`       | `row, col, char *text, attr` | 0; -1 on invalid input    |
+| `put_cell`       | `row, col, ch, attr`         | 0; -1 on invalid input    |
+| `begin_update`   | None                         | 0; begin batched drawing  |
+| `end_update`     | None                         | 0; present batched cells  |
+
+`attr = background * 16 + foreground`, with palette indices 0-15.
+`set_color` changes the program's drawing attribute. Persistent colors use
+`env_set` or the settings services. The text grid is 96x48 in graphics mode
+and 80x24 in text mode. Clearing preserves the status bar.
+
+Batch several positioned text changes to present them together:
+
+```c
+begin_update();
+put_text(2, 2, "Title", 31);
+put_cell(3, 2, '*', 31);
+end_update();
+```
+
+### Graphics
+
+| Function     | Parameters              | Result                 |
+| ------------ | ----------------------- | ---------------------- |
+| `draw_pixel` | `x, y, color`           | 0; -1 on invalid input |
+| `draw_line`  | `x1, y1, x2, y2, color` | 0; -1 on invalid input |
+
+Colors are palette indices 0-15. Graphics require a framebuffer. Its 12-pixel
+status-bar margin is reserved; drawing into it returns -1.
+
+### Memory and strings
+
+| Function | Parameters                    | Result                          |
+| -------- | ----------------------------- | ------------------------------- |
+| `alloc`  | `bytes`                       | `void*`; 0 on failure           |
+| `memcpy` | `void *dst, void *src, bytes` | `void*` destination; 0 on error |
+| `memset` | `void *dst, byte, bytes`      | `void*` destination; 0 on error |
+| `strlen` | `char *text`                  | Length; -1 for null text        |
+
+Command allocations are reclaimed when the command returns. Workers share
+that heap with their parent command.
+
+### Files and directories
+
+| Function      | Parameters                      | Result                   |
+| ------------- | ------------------------------- | ------------------------ |
+| `file_size`   | `char *path`                    | Size; -1 if unavailable  |
+| `file_read`   | `char *path, void *buf, n, off` | Bytes read; -1 on error  |
+| `file_write`  | `char *path, void *buf, n`      | 0; -1 on failure         |
+| `file_delete` | `char *path`                    | 0; -1 on failure         |
+| `file_create` | `char *path`                    | 0; -1 if not created     |
+| `mkdir`       | `char *path`                    | 0; negative ESFS error   |
+| `chdir`       | `char *path`                    | 0; -1 on failure         |
+| `getcwd`      | `char *buf, cap`                | Path length; -1 on error |
+
+`file_read` returns 0 at EOF. `file_write` creates or replaces a file;
+`file_create` requires an absent file. `file_delete` accepts files and empty
+directories. Paths may be relative, absolute, or qualified, such as
+`sys:/home/app.sz` and `1p1:/source/app.sz`. `chdir` is foreground-only.
+
+### Commands and threads
+
+| Function       | Parameters         | Result                             |
+| -------------- | ------------------ | ---------------------------------- |
+| `execute`      | `char *command`    | Command exit status                |
+| `sleep`        | `milliseconds`     | 0; -1 on invalid duration          |
+| `thread_start` | `void *entry, arg` | Positive thread ID; -1 on error    |
+| `thread_join`  | `id`               | Worker result; -1 on error         |
+| `thread_yield` | None               | 0                                  |
+| `thread_sleep` | `milliseconds`     | 0; -1 on invalid duration          |
+| `thread_id`    | None               | Current ID; foreground is 0        |
+| `thread_count` | None               | Number of running/sleeping workers |
+| `mutex_create` | None               | Positive handle; -1 on error       |
+| `mutex_lock`   | `id`               | 0; -1 on invalid/recursive lock    |
+| `mutex_unlock` | `id`               | 0; -1 if caller is not the owner   |
+
+Sleep durations are 0-60,000 ms; zero yields. `execute` is foreground-only and
+returns 2 if a command cannot be executed.
+
+### Environment and settings
+
+| Function                | Parameters                  | Result                    |
+| ----------------------- | --------------------------- | ------------------------- |
+| `env_get`               | `char *key, char *buf, cap` | Value length; -1 on error |
+| `env_set`               | `char *key, char *value`    | 0; -1 on failure          |
+| `env_apply`             | None                        | 0; -1 from a worker       |
+| `clock_time`            | None                        | Seconds since midnight    |
+| `status_position`       | None                        | 0 top; 1 bottom           |
+| `settings_apply`        | `sec, pos, attr`            | 0; -1 on failure          |
+| `settings_apply_colors` | `sec, pos, attr, secondary` | 0; -1 on failure          |
+
+`env_set` validates, saves, and applies a value. `env_apply` reapplies display
+settings. `settings_apply` saves clock/bar/colors and keeps the secondary color
+visible; `settings_apply_colors` sets it explicitly. `sec` is 0-86,399, `pos` is
+0 or 1, and `secondary` is 0-15. Both text colors must differ from the background.
+These mutation services are foreground-only. See
+[environment variables](storage.md#environment-variables) for names/defaults.
+
+### Disk operations
+
+| Function        | Parameters        | Result           |
+| --------------- | ----------------- | ---------------- |
+| `disk_edit`     | `disk, action, n` | 0; -1 on failure |
+| `volume_format` | `disk, partition` | 0; -1 on failure |
+
+Both operations are foreground-only. The running system disk's table, EFI
+partition, and system volume are protected. Formatting removes all volume files.
+
+| `disk_edit` action | `n`                           |
+| ------------------ | ----------------------------- |
+| `0`                | Table type: 1 MBR, 2 GPT      |
+| `1`                | New partition size in sectors |
+| `2`                | Partition slot to delete      |
+
+A sector is 512 bytes. Creating a table replaces its partition layout; deleting
+a partition removes access to its files. Use `diskman` for confirmed GUI changes.
+
+### Palette
+
+| Index | Color   | Index | Color         |
+| ----: | ------- | ----: | ------------- |
+| 0     | Black   | 8     | Gray          |
+| 1     | Blue    | 9     | Light blue    |
+| 2     | Green   | 10    | Light green   |
+| 3     | Cyan    | 11    | Light cyan    |
+| 4     | Red     | 12    | Light red     |
+| 5     | Magenta | 13    | Light magenta |
+| 6     | Brown   | 14    | Yellow        |
+| 7     | White   | 15    | Bright white  |
 
 ## Threads
 
-The kernel schedules threads on one CPU with a 5 ms timer quantum. Each worker
-has a separate 64 KiB stack; programs share their code, globals, heap, filesystem,
-and console. Up to 13 user workers can exist at once. This provides concurrency
-on the existing shared address space; there is no process isolation, SMP
-scheduling, or floating-point context support.
+Workers share code, globals, heap, filesystem, and console on one CPU. Each
+has a 64 KiB stack; up to 13 workers can hold handles. Scheduling uses a 5 ms
+quantum. There is no process isolation, SMP, or floating-point context support.
 
-    int worker(int value) {
-        thread_sleep(100);
-        return value * 2;
-    }
-    int main() {
-        int id = thread_start(worker, 21);
-        if (id < 0) return 1;
-        print_dec(thread_join(id));
-        newline();
-        return 0;
-    }
+```c
+int worker(int n) {
+    thread_sleep(100);
+    return n * 2;
+}
 
-The function must return `int` and take one `int` argument. A function name
-evaluates to its thread entry wrapper; it can also be stored in a `void*`.
-Arguments can carry 32-bit values or pointers cast to `int`. Use a mutex to
-protect shared read/modify/write operations such as `total++`; `threads.sz`
-demonstrates this. Mutexes are nonrecursive and belong to the current command.
+int main() {
+    int id = thread_start(worker, 21);
+    if (id < 0) return 1;
+    print_dec(thread_join(id));
+    newline();
+    return 0;
+}
+```
 
-The command waits for all its workers before unloading its executable and
-reclaiming its heap, even if `main` returns without joining. Joined handles
-become invalid and their slots can be reused. A returning worker releases any
-mutexes it still holds. All command-owned mutexes are discarded when it exits.
+Workers take one `int` and return `int`. Use mutexes around shared updates such
+as `total++` or a sequence of console calls. API operations are serialized.
+Mutexes are nonrecursive and command-owned. Joining consumes the worker handle.
+The command waits for its workers before unloading and reclaiming memory.
 
-Kernel API operations on files, memory, and text are serialized across workers.
-Use a mutex around a multi-call console update to keep related output together.
-`sleep` also uses the scheduler. Keyboard input, `execute`, and `settings_apply`
-are reserved for the foreground thread; workers receive an error for these
-calls. Host-built C workers use `int entry(env_vars_t *env, uint32_t argument)`
-and call shared services through `env->api`.
+## Libraries and linking
 
-## Status bar and settings
+### SDK
 
-The status bar shows `SystemZero  v0.1.0`, the current command with arguments,
-and a 24-hour `HH:MM:SS` clock. Nested commands restore their parent's title
-when they finish; the idle title is `shell`. Long command titles are shortened
-with an ellipsis while the clock stays visible.
+Headers are searched through `INCLUDE=sys:/sys/include`. Objects/archives are
+searched through `LIBRARY_PATH=sys:/sys/lib`, after the supplied path. Quoted
+includes check the source's directory first; `-I DIRECTORY` adds one directory.
 
-Run `settings` to open the graphical settings screen. Tab/Shift+Tab selects
-hours, minutes, seconds, bar position, foreground, or background. Arrow keys
-adjust a field; digits enter clock values. The two color palettes show all
-16 colors and a live text preview. Enter saves; Escape cancels and restores the
-previous console. The framebuffer retains its 96×48 text grid; the VGA fallback
-reserves one row and provides an 80×24 text viewport.
+| Header                | Object     | Services                    |
+| --------------------- | ---------- | --------------------------- |
+| `systemzero/io.h`     | `io.o`     | Console, text, graphics     |
+| `systemzero/memory.h` | `memory.o` | Memory and strings          |
+| `systemzero/fs.h`     | `fs.o`     | Files and directories       |
+| `systemzero/thread.h` | `thread.o` | Threads, mutexes, execution |
+| `systemzero/env.h`    | `env.o`    | Environment, clock, disks   |
+| `systemzero/system.h` | `system.a` | All SDK groups              |
 
-Settings are saved atomically in `systemzero.cfg` on the system drive and
-survive builds and reboots. The clock initializes from the hardware RTC, plus
-a saved time offset, so it continues advancing between boots. Invalid saved
-settings are ignored. The version string is defined in `shared/version.h`.
+SDK names use the `sz_` prefix:
 
-## Native API and ELF interface
+```c
+#include <systemzero/io.h>
 
-The public ABI is defined in `shared/sys_api.h` and `shared/sys_api.def`.
-The kernel publishes a persistent API table through `env_vars_t.api`. Each
-service has a permanent numeric slot, a versioned table header, and the uniform
-i386 cdecl signature `(env, a, b, c, d, e) -> int32_t`. Pointer results use the
-same 32-bit register. Unused arguments are zero.
+int main() {
+    sz_print("Linked SDK call\n");
+    return 0;
+}
+```
 
-The compiler checks function names, argument counts, and types, and emits calls
-through that table. Generated entry code checks its magic, version, and minimum
-entry count before calling `main`; an incompatible API returns exit status 2.
-Compatible version-1 tables may append entries without changing existing slots.
-The kernel owns the functions, so generated executables use the actual kernel
-libraries rather than carrying copies of their implementation.
+```text
+cc app.sz app io.o
+./app
+```
 
-Executables use one ELF32 load segment. Code/global/string addresses are
-relative to the image base; internal calls use relative displacements.
-No fixed kernel addresses, Linux interpreter, or dynamic symbol resolver are
-needed. The existing ELF loader validates and loads the result. Calls preserve
-the i386 callee-saved registers and use 16-byte-aligned call frames.
+`system.a` contains all SDK groups. Link the archive or individual group objects;
+using both defines the same symbols twice.
 
-The loader reclaims command allocations and restores terminal updates/cursor
-state when a command returns, including after nested `execute` calls.
-This first compiler links user functions within one source file and binds
-kernel imports; arbitrary `.o`/`.a` linking is a separate future feature.
+### Separate compilation
+
+Declare external functions with prototypes or headers, then compile/link:
+
+```text
+cc -c helper.sz helper.o
+cc -c main.sz main.o
+ld app main.o helper.o system.a
+./app
+```
+
+`cc SOURCE OUTPUT OBJECT...` performs compilation and linking in one command.
+The preprocessor supports includes, object-like `#define`, and
+`#ifdef`/`#ifndef` with `#else`/`#endif`.
+
+## Limits and executable format
+
+| Resource                    | Limit                      |
+| --------------------------- | -------------------------- |
+| Expanded source             | 64 KiB                     |
+| Tokens                      | 16,384                     |
+| Functions / globals         | 128 each                   |
+| Visible locals              | 256                        |
+| Local storage per function  | 16 KiB                     |
+| Arguments per user function | 8                          |
+| Strings and global data     | 64 KiB combined            |
+| Preprocessor macros         | 64                         |
+| Include nesting             | 8 levels                   |
+| Compiler object output      | 256 KiB                    |
+| Linker objects / symbols    | 64 / 4,096                 |
+| Executable file             | 916,992 bytes (ESFS limit) |
+
+Objects are ELF32 `ET_REL`; executables are position-independent ELF32 `ET_DYN`.
+The linker supports i386 absolute, PC-relative, PLT, GOT, GOTOFF relocations,
+BSS, and ar archives. It links all archive members. COMMON symbols, TLS,
+shared-library imports, and other architectures are unsupported.
+
+The entry checks the kernel API table before calling `main`. Built-ins use
+`shared/sys_api.def`; SDK wrappers use the same service slots. The native call
+interface is i386 cdecl with a hidden environment pointer and five arguments.
+The loader validates segments, applies relocations, and restores the command's
+heap and console update/cursor state when it returns.

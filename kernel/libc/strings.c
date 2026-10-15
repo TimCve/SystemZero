@@ -1,4 +1,5 @@
 #include "../drivers/io/screen.h"
+#include "../../shared/arguments.h"
 
 int strcmp(const char *s1, const char *s2) {
     const unsigned char *p1 = (const unsigned char *)s1;
@@ -13,6 +14,11 @@ char *splice(char *string, int index, char delim) {
     static char output[8][512]; static unsigned slot;
     char *result = output[slot++ % 8]; result[0] = 0;
     if (!string || index < 0) return result;
+    if(delim==' ') {
+        const char *scan=string;
+        for(int i=0;i<=index;i++) if(sz_arg_next(&scan,result,512)<0) { result[0]=0; break; }
+        return result;
+    }
     while (index && *string) { if (*string++ == delim) index--; }
     if (index) return result;
     unsigned n = 0;

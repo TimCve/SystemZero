@@ -14,6 +14,12 @@ typedef struct env_vars {
     const struct systemzero_api *api;
     struct desktop *desktop;
     int (*run)(char *, char *, struct env_vars *);
+    const struct boot_info *boot;
+    struct block_runtime *disks;
+    int (*keyboard_poll)(void);
+    uint8_t selected_partition, system_partition;
+    struct system_variables *variables;
+    struct input_runtime *input;
 } env_vars_t;
 
 #endif

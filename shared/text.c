@@ -77,14 +77,45 @@ void text_ensure_visible(text_buffer_t *buffer) {
     }
     buffer->top = text_previous_lines(buffer->data, buffer->size, line, rows - 2);
 }
-int text_insert(text_buffer_t *buffer, uint8_t ch) {
-    if (buffer->size == buffer->capacity || buffer->cursor > buffer->size) return 0;
-    for (uint32_t i = buffer->size; i > buffer->cursor; i--) buffer->data[i] = buffer->data[i - 1];
-    buffer->data[buffer->cursor++] = ch; buffer->size++; buffer->goal_valid = 0; return 1;
+int text_selected(const text_buffer_t *b,uint32_t position) {
+    uint32_t a=b->anchor<b->cursor?b->anchor:b->cursor,z=b->anchor<b->cursor?b->cursor:b->anchor;
+    return b->selection && position>=a && position<z;
 }
-int text_delete(text_buffer_t *buffer, int backwards) {
-    if (backwards) { if (!buffer->cursor) return 0; buffer->cursor--; }
-    if (buffer->cursor >= buffer->size) return 0;
-    for (uint32_t i = buffer->cursor; i + 1 < buffer->size; i++) buffer->data[i] = buffer->data[i + 1];
-    buffer->size--; buffer->goal_valid = 0; return 1;
+void text_select_clear(text_buffer_t *b) { b->selecting=b->selection=0; }
+int text_replace(text_buffer_t *b,const uint8_t *data,uint32_t count) {
+    if(b->cursor>b->size || (b->selection && b->anchor>b->size)) return 0;
+    uint32_t a=b->cursor,z=a;
+    if(b->selection) { a=b->anchor<b->cursor?b->anchor:b->cursor; z=b->anchor<b->cursor?b->cursor:b->anchor; }
+    if(count>b->capacity-(b->size-(z-a))) return 0;
+    uint32_t end=a+count,new_size=b->size-(z-a)+count;
+    if(end>z) for(uint32_t i=b->size;i>z;i--) b->data[end+i-z-1]=b->data[i-1];
+    else for(uint32_t i=z;i<b->size;i++) b->data[end+i-z]=b->data[i];
+    for(uint32_t i=0;i<count;i++) b->data[a+i]=data[i];
+    b->size=new_size; b->cursor=end; b->goal_valid=0; text_select_clear(b); return 1;
+}
+int text_insert(text_buffer_t *b,uint8_t ch) { return text_replace(b,&ch,1); }
+int text_delete(text_buffer_t *b,int backwards) {
+    if(b->selection && b->anchor!=b->cursor) return text_replace(b,0,0);
+    if(backwards) { if(!b->cursor) return 0; b->anchor=b->cursor-1; }
+    else { if(b->cursor>=b->size) return 0; b->anchor=b->cursor+1; }
+    b->selection=1; return text_replace(b,0,0);
+}
+uint32_t text_hit(const text_buffer_t *b,uint32_t row,uint32_t column) {
+    uint32_t pos=b->top;
+    while(row--) { text_line_t line=text_line(b->data,b->size,pos); if(!line.has_next) return b->size; pos=line.next; }
+    text_line_t line=text_line(b->data,b->size,pos); uint32_t col=0;
+    while(pos<line.end) {
+        uint32_t next=text_advance(col,b->data[pos]);
+        if(column<(col+next+1)/2) break;
+        col=next; pos++; if(col>=columns) break;
+    }
+    return pos;
+}
+void text_scroll(text_buffer_t *b,int amount) {
+    if(amount<0) b->top=text_previous_lines(b->data,b->size,b->top,0u-(uint32_t)amount);
+    else while(amount--) {
+        text_line_t line=text_line(b->data,b->size,b->top);
+        if(!line.has_next) break;
+        b->top=line.next;
+    }
 }

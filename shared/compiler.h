@@ -12,4 +12,5 @@ uint32_t szc_workspace_size(void);
    the first diagnostic; the caller must not publish the incomplete image. */
 int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t capacity,
                 void *workspace, szc_result_t *result);
+int szc_compile_object(const uint8_t *, uint32_t, uint8_t *, uint32_t, void *, szc_result_t *);
 #endif

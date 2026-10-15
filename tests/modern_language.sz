@@ -1,0 +1,14 @@
+int main() {
+    int bytes = 131583;
+    char *data = alloc(bytes);
+    char *read = alloc(bytes);
+    if (!data || !read) return 1;
+    int i = 0;
+    while (i < bytes) { data[i] = i % 127; i = i + 1; }
+    if (file_write("modern-output", data, bytes) != 0) return 2;
+    if (file_read("modern-output", read, bytes, 0) != bytes) return 3;
+    i = 0;
+    while (i < bytes) { if (read[i] != data[i]) return 4; i = i + 1; }
+    print("modern-storage-ok\n");
+    return 0;
+}

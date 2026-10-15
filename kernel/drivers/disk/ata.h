@@ -1,6 +1,8 @@
 #ifndef SYSTEMZERO_ATA_H
 #define SYSTEMZERO_ATA_H
 #include <stdint.h>
+struct env_vars;
+void ata_bind_env(struct env_vars *);
 void select_drive(uint8_t drive);
 uint8_t selected_ata_drive(void);
 int identify_drive(uint8_t drive_code);

@@ -13,6 +13,17 @@ static uint32_t name_length(const char *name) {
     while (n <= ESFS_MAX_NAME && name[n]) n++;
     return n && n <= ESFS_MAX_NAME ? n : 0;
 }
+static uint32_t name_hash(const char *name, uint32_t count) {
+    uint32_t hash = 2166136261u;
+    for (uint32_t i = 0; i < count; i++) hash = (hash ^ (uint8_t)name[i]) * 16777619u;
+    return hash;
+}
+static void index_name(esfs_t *fs, uint32_t index, const char *name) {
+    if (index >= ESFS_NAME_INDEX) return;
+    uint32_t length = 0, parent = 0;
+    while (name[length]) { if (name[length] == '/') parent = length; length++; }
+    fs->names[index] = name_hash(name, length); fs->parents[index] = name_hash(name, parent);
+}
 uint32_t esfs_map_bytes(uint32_t sectors) { return sectors / 8 + !!(sectors % 8); }
 static uint32_t data_start(esfs_t *fs) { return ESFS_SUPER_LBA + 1 + fs->sb.inode_blocks; }
 static int taken(esfs_t *fs, uint32_t b) { return fs->used[b / 8] & (1u << (b % 8)); }
@@ -67,13 +78,14 @@ static int write_block(esfs_t *fs, uint32_t lba, void *data) {
 static int sync_blocks(esfs_t *fs) {
     return fs->sync && fs->sync(fs->io) ? io_failure(fs) : 0;
 }
-static int write_inode(esfs_t *fs, uint32_t index, const inode_t *in) {
+static int write_inode(esfs_t *fs, uint32_t index, const inode_t *in, const char *name) {
     inode_t block[8];
     if (index >= fs->sb.inodes) return ESFS_INVALID;
     uint32_t lba = ESFS_SUPER_LBA + 1 + index / 8;
     if (read_inode_block(fs, index / 8, block)) return ESFS_IO;
     block[index % 8] = *in;
     int rc = write_block(fs, lba, block);
+    if (!rc && in->valid && name) index_name(fs, index, name);
     if (!rc && in->valid && index / 8 >= fs->inode_end) fs->inode_end = index / 8 + 1;
     return rc;
 }
@@ -120,7 +132,7 @@ int esfs_mount(esfs_t *fs) {
         fs->sb.inodes = fs->sb.inode_blocks * 8;
         fs->sb.blocks = fs->sectors;
         fs->sb.disk_size = fs->sectors * 512;
-    } else if (fs->sb.magic != ESFS_MAGIC) return ESFS_INVALID;
+    } else if (fs->sb.magic != ESFS_MAGIC && fs->sb.magic != ESFS_FLAT_MAGIC) return ESFS_INVALID;
     if (!fs->sb.inode_blocks || fs->sb.blocks != fs->sectors ||
         fs->sb.inode_blocks >= fs->sectors - ESFS_SUPER_LBA - 1 ||
         fs->sb.inodes != fs->sb.inode_blocks * 8 || fs->sb.disk_size != fs->sectors * 512)
@@ -134,7 +146,8 @@ int esfs_mount(esfs_t *fs) {
             inode_t *in = &inodes[i];
             if (!in->valid) continue;
             fs->inode_end = b + 1;
-            if (in->valid != 1 || in->size > ESFS_MAX_FILE) return ESFS_INVALID;
+            if ((in->valid != ESFS_FILE && in->valid != ESFS_DIRECTORY) || in->size > ESFS_MAX_FILE ||
+                (in->valid == ESFS_DIRECTORY && in->size)) return ESFS_INVALID;
             uint32_t data_count = 0; int ended = 0;
             for (uint32_t p = 0; p < 14; p++) {
                 if (!in->indirect_pointers[p]) { ended = 1; continue; }
@@ -148,6 +161,7 @@ int esfs_mount(esfs_t *fs) {
             }
             int rc = file_name(fs, in, name);
             if (rc) return rc;
+            index_name(fs, b * 8 + i, name);
             if (in->size + name_length(name) + 1 > data_count * 512) return ESFS_INVALID;
         }
     }
@@ -155,11 +169,17 @@ int esfs_mount(esfs_t *fs) {
 }
 int esfs_find(esfs_t *fs, const char *name, inode_t *out, uint32_t *index) {
     if (out) zero(out, sizeof *out);
+    if (fs->mounted && name && !*name) {
+        if (out) out->valid = ESFS_DIRECTORY;
+        if (index) *index = 0xffffffffu;
+        return 0;
+    }
     if (!fs->mounted || !name_length(name)) return ESFS_INVALID;
-    inode_t block[8]; char found[512];
+    inode_t block[8]; char found[512]; uint32_t hash = name_hash(name, name_length(name));
     for (uint32_t b = 0; b < fs->inode_end; b++) {
         if (read_inode_block(fs, b, block)) return ESFS_IO;
         for (uint32_t i = 0; i < 8; i++) if (block[i].valid) {
+            if (b * 8 + i < ESFS_NAME_INDEX && fs->names[b * 8 + i] != hash) continue;
             int rc = file_name(fs, &block[i], found); if (rc) return rc;
             if (equal(name, found)) {
                 if (out) *out = block[i];
@@ -201,9 +221,28 @@ static int publish_geometry(esfs_t *fs) {
     fs->sb.magic = ESFS_MAGIC; copy(raw, &fs->sb, sizeof fs->sb);
     return write_block(fs, ESFS_SUPER_LBA, raw);
 }
-int esfs_create(esfs_t *fs, const char *name) {
+static int parent_directory(esfs_t *fs, const char *name) {
+    if (!name_length(name)) return ESFS_INVALID;
+    char parent[512]; uint32_t end = 0, start = 0;
+    for (uint32_t i = 0; name[i]; i++) {
+        if (name[i] == ':' || (uint8_t)name[i] < 32) return ESFS_INVALID;
+        if (name[i] == '/') {
+            if (i == start || (i-start == 1 && name[start] == '.') ||
+                (i-start == 2 && name[start] == '.' && name[start+1] == '.')) return ESFS_INVALID;
+            end = i; start = i + 1;
+        }
+    }
+    uint32_t n = name_length(name) - start;
+    if (!n || (n == 1 && name[start] == '.') || (n == 2 && name[start] == '.' && name[start+1] == '.')) return ESFS_INVALID;
+    if (!end) return 0;
+    copy(parent, name, end); parent[end] = 0;
+    inode_t in; int rc = esfs_find(fs, parent, &in, 0);
+    return rc ? rc : in.valid == ESFS_DIRECTORY ? 0 : ESFS_NOT_DIR;
+}
+static int create_node(esfs_t *fs, const char *name, uint32_t kind) {
     uint32_t length = name_length(name);
     if (!fs->mounted || !length) return ESFS_INVALID;
+    int parent = parent_directory(fs, name); if (parent) return parent;
     int rc = esfs_find(fs, name, 0, 0);
     if (!rc) return ESFS_EXISTS;
     if (rc != ESFS_NOT_FOUND) return rc;
@@ -217,14 +256,44 @@ int esfs_create(esfs_t *fs, const char *name) {
     if (!data) { if (pointer) mark(fs, pointer, 0); return ESFS_FULL; }
     uint32_t ptr[128]; uint8_t bytes[512]; zero(ptr, sizeof ptr); zero(bytes, sizeof bytes);
     ptr[0] = data; copy(bytes, name, length);
-    inode_t in; zero(&in, sizeof in); in.valid = 1; in.indirect_pointers[0] = pointer;
+    inode_t in; zero(&in, sizeof in); in.valid = kind; in.indirect_pointers[0] = pointer;
     rc = publish_geometry(fs);
     if (!rc && (write_block(fs, data, bytes) || write_block(fs, pointer, ptr))) rc = ESFS_IO;
     /* Persist data and pointers before exposing an inode, then persist publication. */
     if (!rc) rc = sync_blocks(fs);
-    if (!rc) rc = write_inode(fs, index, &in);
+    if (!rc) rc = write_inode(fs, index, &in, name);
     if (!rc) rc = sync_blocks(fs);
     if (rc) { fs->mounted = 0; return rc; }
+    return 0;
+}
+int esfs_create(esfs_t *fs, const char *name) { return create_node(fs, name, ESFS_FILE); }
+int esfs_mkdir(esfs_t *fs, const char *name) { return create_node(fs, name, ESFS_DIRECTORY); }
+typedef struct { const char *directory; uint32_t length; esfs_visit_fn visit; void *arg; } listing_t;
+static int list_child(void *arg, const char *name, const inode_t *in) {
+    listing_t *l = arg; uint32_t at = 0;
+    if (l->length) {
+        while (at < l->length && name[at] && name[at] == l->directory[at]) at++;
+        if (at != l->length || name[at] != '/') return 0;
+        at++;
+    }
+    for (uint32_t i = at; name[i]; i++) if (name[i] == '/') return 0;
+    return l->visit(l->arg, name + at, in);
+}
+int esfs_list(esfs_t *fs, const char *directory, esfs_visit_fn visit, void *arg) {
+    inode_t in; int rc = esfs_find(fs, directory, &in, 0);
+    if (rc || !visit) return rc ? rc : ESFS_INVALID;
+    if (in.valid != ESFS_DIRECTORY) return ESFS_NOT_DIR;
+    uint32_t n = 0; while (directory[n]) n++;
+    listing_t listing = {directory, n, visit, arg};
+    uint32_t hash = name_hash(directory, n); inode_t block[8]; char name[512];
+    for (uint32_t b = 0; b < fs->inode_end; b++) {
+        if (read_inode_block(fs, b, block)) return ESFS_IO;
+        for (uint32_t i = 0; i < 8; i++) if (block[i].valid) {
+            if (b * 8 + i < ESFS_NAME_INDEX && fs->parents[b * 8 + i] != hash) continue;
+            rc = file_name(fs, &block[i], name); if (rc) return rc;
+            rc = list_child(&listing, name, &block[i]); if (rc) return rc;
+        }
+    }
     return 0;
 }
 /* Resolve a logical sector. Pointer slots are indexed explicitly, including at 64 KiB. */
@@ -248,11 +317,11 @@ static int sector(esfs_t *fs, inode_t *in, uint32_t logical, int create, uint32_
 int esfs_read(esfs_t *fs, const char *name, void *dst, uint32_t offset, uint32_t count, uint32_t *actual) {
     if (actual) *actual = 0;
     inode_t in; int rc = esfs_find(fs, name, &in, 0); if (rc) return rc;
+    if (in.valid != ESFS_FILE) return ESFS_IS_DIR;
     if (!dst && count) return ESFS_INVALID;
     if (offset >= in.size) return 0;
     if (count > in.size - offset) count = in.size - offset;
-    char filename[512]; rc = file_name(fs, &in, filename); if (rc) return rc;
-    uint32_t position = name_length(filename) + 1 + offset, done = 0;
+    uint32_t position = name_length(name) + 1 + offset, done = 0;
     uint8_t data[512], *target = dst;
     while (done < count) {
         uint32_t lba, n = 512 - position % 512;
@@ -274,8 +343,8 @@ int esfs_read(esfs_t *fs, const char *name, void *dst, uint32_t offset, uint32_t
 }
 int esfs_append(esfs_t *fs, const char *name, const void *src, uint32_t count) {
     inode_t in; uint32_t index; int rc = esfs_find(fs, name, &in, &index); if (rc) return rc;
-    char filename[512]; rc = file_name(fs, &in, filename); if (rc) return rc;
-    uint32_t prefix = name_length(filename) + 1;
+    if (in.valid != ESFS_FILE) return ESFS_IS_DIR;
+    uint32_t prefix = name_length(name) + 1;
     if ((!src && count) || count > ESFS_MAX_FILE - in.size) return ESFS_FULL;
     if (!count) return 0;
     /* Check capacity before changing any existing contents. */
@@ -298,15 +367,18 @@ int esfs_append(esfs_t *fs, const char *name, const void *src, uint32_t count) {
         done += n; position += n;
     }
     rc = sync_blocks(fs);
-    if (!rc) { in.size += done; rc = write_inode(fs, index, &in); }
+    if (!rc) { in.size += done; rc = write_inode(fs, index, &in, name); }
     if (!rc) rc = sync_blocks(fs);
     if (rc) fs->mounted = 0;
     return rc;
 }
+static int nonempty(void *arg, const char *name, const inode_t *in) { (void)arg; (void)name; (void)in; return ESFS_NOT_EMPTY; }
 int esfs_delete(esfs_t *fs, const char *name) {
     inode_t in, empty; uint32_t index; int rc = esfs_find(fs, name, &in, &index); if (rc) return rc;
+    if (!*name) return ESFS_INVALID;
+    if (in.valid == ESFS_DIRECTORY) { rc = esfs_list(fs, name, nonempty, 0); if (rc) return rc; }
     rc = publish_geometry(fs); if (rc) return rc;
-    zero(&empty, sizeof empty); rc = write_inode(fs, index, &empty); if (rc) return rc;
+    zero(&empty, sizeof empty); rc = write_inode(fs, index, &empty, 0); if (rc) return rc;
     /* Persist removal before any of the old blocks become available for reuse. */
     rc = sync_blocks(fs); if (rc) return rc;
     uint32_t ptr[128];
@@ -320,6 +392,7 @@ int esfs_delete(esfs_t *fs, const char *name) {
 int esfs_replace(esfs_t *fs, const char *name, const void *source, uint32_t count) {
     uint32_t prefix = name_length(name) + 1, index;
     if (!fs->mounted || prefix == 1 || (!source && count) || count > ESFS_MAX_FILE) return ESFS_INVALID;
+    int parent = parent_directory(fs, name); if (parent) return parent;
     inode_t previous, replacement = {0};
     int rc = esfs_find(fs, name, &previous, &index);
     if (rc == ESFS_NOT_FOUND) {
@@ -330,6 +403,7 @@ int esfs_replace(esfs_t *fs, const char *name, const void *source, uint32_t coun
         }
         if (index == fs->sb.inodes) return ESFS_FULL;
     } else if (rc) return rc;
+    else if (previous.valid != ESFS_FILE) return ESFS_IS_DIR;
     uint32_t sectors = (prefix + count + 511) / 512;
     uint32_t needed = sectors + (sectors + 127) / 128, available = 0;
     for (uint32_t b = data_start(fs); b < fs->sectors && available < needed; b++) if (!taken(fs, b)) available++;
@@ -349,7 +423,7 @@ int esfs_replace(esfs_t *fs, const char *name, const void *source, uint32_t coun
     }
     rc = publish_geometry(fs);
     if (!rc) rc = sync_blocks(fs);
-    if (!rc) rc = write_inode(fs, index, &replacement);
+    if (!rc) rc = write_inode(fs, index, &replacement, name);
     if (!rc) rc = sync_blocks(fs);
     if (rc) { fs->mounted = 0; return rc; }
     /* The old inode remains intact until the complete replacement is published. */

@@ -1,21 +1,12 @@
-#include "../kernel/env_vars.h"
-#include "../kernel/drivers/disk/ata.h"
+#include "../kernel/drivers/disk/volume.h"
 #include "../kernel/drivers/io/screen.h"
-#include "../kernel/drivers/disk/fs.h"
 #include "../kernel/libc/strings.h"
-#include <stdint.h>
-
-int main(env_vars_t* env_vars_ptr, char* input_buffer) {
-	set_term_color(env_vars_ptr->term_color);
-	uint8_t drive = atoi(splice(input_buffer, 1, 0x20));
-
-	select_drive(drive);
-
-	if(((drive == 0 || drive == 2) && identify_drive(0xA0) == 1) || ((drive == 1 || drive == 3) && identify_drive(0xB0) == 1)) {
-		env_vars_ptr->selected_drive = drive;
-		return 0;
-	 } else {
-		print("Drive doesn't exist"); print_newline();
-		return 1;
-	}
+int main(env_vars_t *env,char *args) {
+    char *name=splice(args,1,' '); char path[16]; uint32_t n=strlen(name);
+    if(!n || n>8) goto bad;
+    for(uint32_t i=0;i<n;i++) path[i]=name[i];
+    if(path[n-1]!=':') path[n++]=':';
+    path[n]=0;
+    if(!volume_select(env,path)) return 0;
+bad: print("Usage: drive DISK or DISKpPARTITION (for example: drive 1p1)"); print_newline(); return 1;
 }

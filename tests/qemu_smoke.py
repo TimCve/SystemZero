@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the guest through QMP, using a disposable copy of its disk."""
 import json
+from functools import cache
 import os
 import re
 from pathlib import Path
@@ -21,13 +22,24 @@ COLS, ROWS = TERMINAL["TERM_COLS"], TERMINAL["TERM_ROWS"]
 FONT_HEIGHT, CELL_HEIGHT = TERMINAL["TERM_FONT_HEIGHT"], TERMINAL["TERM_CELL_HEIGHT"]
 FONT_TOP = TERMINAL["TERM_FONT_TOP"]
 
+@cache
+def terminal_presenting_offset():
+    # Ask the i386 compiler for the layout rather than duplicating private
+    # terminal fields in the host's pointer-size/alignment model.
+    assembly=subprocess.check_output(
+        ["gcc","-m32","-ffreestanding","-S","-x","c","-o","-","-"],cwd=ROOT,text=True,
+        input='#include <stddef.h>\n#include "shared/terminal.h"\nunsigned sz_presenting_offset=offsetof(terminal_t,presenting);\n')
+    return int(re.search(r"sz_presenting_offset:\s*\.long\s+(\d+)",assembly)[1])
+
 class Guest:
-    def __init__(self, image, scratch, extra=None, vga="std"):
+    def __init__(self, image, scratch, extra=None, vga="std", launch_args=None):
         self.scratch = Path(scratch)
         args = ["qemu-system-i386", "-m", "64M", "-vga", vga, "-display", "none", "-serial", "none",
                 "-no-reboot", "-drive", f"format=raw,file={image},index=0", "-qmp", "stdio"]
         if extra:
             args += ["-drive", f"format=raw,file={extra},index=1"]
+        if launch_args is not None:
+            args = launch_args + ["-qmp", "stdio"]
         self.log = (self.scratch / "qemu.log").open("w+")
         self.process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=self.log, text=True, env={**os.environ, "TMPDIR": scratch})
@@ -79,9 +91,11 @@ class Guest:
         address = self.terminal_address()
         assert address, "Framebuffer terminal was not initialized"
         values = struct.unpack("<12I4B", self.memory(address + COLS * ROWS * 4, 52))
-        return dict(zip(("pixels", "font", "width", "height", "pitch", "origin_x", "origin_y",
+        result = dict(zip(("pixels", "font", "width", "height", "pitch", "origin_x", "origin_y",
                          "cursor", "shown_cursor", "updates", "rendered", "presentations",
                          "color", "scrolling", "visible", "clear_canvas"), values))
+        result["presenting"]=self.memory(address+terminal_presenting_offset(),1)[0]
+        return result
 
     def heap_pointer(self):
         return struct.unpack("<I", self.memory(self.env_address, 4))[0]
@@ -90,7 +104,7 @@ class Guest:
         address = struct.unpack("<I", self.memory(self.env_address + 28, 4))[0]
         if not address: return None
         values = struct.unpack("<III4B", self.memory(address, 16))
-        state = dict(zip(("seconds", "milliseconds", "dirty", "position", "color", "enabled", "reserved"), values))
+        state = dict(zip(("seconds", "milliseconds", "dirty", "position", "color", "enabled", "secondary_color"), values))
         state["command"] = self.memory(address + 16, 2000).split(b"\0", 1)[0].decode()
         state["bar"] = self.memory(address + 2020, 101).split(b"\0", 1)[0].decode()
         return state
@@ -100,9 +114,16 @@ class Guest:
         while time.monotonic() < deadline:
             screen = self.screen()
             if text in screen:
-                return screen
+                address=self.terminal_address()
+                state=self.terminal_state() if address else None
+                if not state or not (state['updates'] or state['presenting']): return screen
             time.sleep(.1)
         raise AssertionError(f"Guest did not display {text!r}:\n{screen}")
+
+    def boot_root(self, timeout=20):
+        self.wait_for("DISK0p2/home>", timeout)
+        self.type("cd /")
+        return self.wait_for("DISK0p2>")
 
     def key(self, *keys):
         self.command("send-key", {"keys": [{"type": "qcode", "data": k} for k in keys], "hold-time": 20})
@@ -111,6 +132,7 @@ class Guest:
     def type(self, text, submit=True):
         for char in text:
             if char.isalpha() and char.islower(): self.key(char)
+            elif char.isalpha() and char.isupper(): self.key("shift", char.lower())
             elif char.isdigit(): self.key(char)
             elif char == " ": self.key("spc")
             elif char == ".": self.key("dot")
@@ -157,8 +179,8 @@ class Guest:
             tail = screen[start + len(text) + 2:] if start >= 0 else ""
             # Long output can scroll the command echo away; the live cursor still
             # identifies the next shell prompt without printing an exit-status line.
-            if 0 <= row < rows and cursor % columns == 6 and \
-                    lines[row].strip() in ("IDE0>", "IDE1>", "IDE2>", "IDE3>"):
+            if 0 <= row < rows and re.fullmatch(r"DISK[0-3](?:p\d+)?(?:/.*)?>", lines[row].strip()) and \
+                    cursor % columns == len(lines[row].rstrip()) + 1:
                 output = tail if start >= 0 else screen
                 assert "-> exit status" not in output, output
                 if expected is not None:
@@ -175,12 +197,12 @@ class Guest:
             self.process.wait(timeout=5)
             self.process.stdin.close(); self.process.stdout.close(); self.log.close()
 
-def main():
+def main(source_image=ROOT / "os-image.bin"):
     subprocess.run(["make", "build/tests/large.elf", "build/tests/nested.elf", "build/tests/console_state.elf"],
                    cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="systemzero-qemu-") as scratch:
         image = Path(scratch) / "disk.bin"
-        shutil.copyfile(ROOT / "os-image.bin", image)
+        shutil.copyfile(source_image, image)
         extra = Path(scratch) / "extra.bin"
         with extra.open("wb") as f: f.truncate(8 * 1024 * 1024)
         binary = Path(scratch) / "binary"
@@ -189,6 +211,9 @@ def main():
         invalid = Path(scratch) / "invalid"
         invalid.write_bytes(b"\x7fELF" + bytes(48))
         writer = str(ROOT / "ESFS_raw_write")
+        # Rendering assertions use defaults; the user's saved colors stay on their disk.
+        subprocess.run([writer, "--delete", str(image), "systemzero.cfg"], check=True)
+        subprocess.run([writer, "--delete", str(image), "sys/config/environment"], check=True)
         editable = Path(scratch) / "editable"
         editable.write_bytes(b"abc")
         multiline = Path(scratch) / "multiline"
@@ -203,7 +228,7 @@ def main():
             subprocess.run([writer, "--replace", str(image), name, str(source)], check=True)
         guest = Guest(image, scratch, extra)
         try:
-            print(guest.wait_for("IDE0>"), flush=True)
+            print(guest.boot_root(), flush=True)
             state = guest.terminal_state()
             assert (state["width"], state["height"], state["pitch"]) == (
                 VIDEO["VIDEO_WIDTH"], VIDEO["VIDEO_HEIGHT"], VIDEO["VIDEO_WIDTH"])
@@ -223,37 +248,41 @@ def main():
                     assert value == (0xffffff if ink else 0x0000aa)
             initial_heap = guest.heap_pointer()
             screen = guest.run("list")
-            for name in ("copy", "list", "read", "manual.txt"):
+            for name in ("bin/", "docs/", "home/", "sys/"):
                 assert name in screen, screen
             assert "chain" not in screen, screen
-            guest.run("chain", "Command not found or filesystem unavailable.")
+            for name in ("copy", "list", "read"):
+                assert name in guest.run("list sys:/bin")
+            guest.run("chain", "Command not found in PATH.")
             guest.run("drives")
-            guest.run("drive 3", "Drive doesn't exist")
+            guest.run("drive 3", "Usage: drive DISK")
             guest.run("touch smoke.txt")
             assert "smoke.txt" in guest.run("list")
             guest.run("del smoke.txt")
             assert "smoke.txt" not in guest.run("list")
-            guest.run("del smoke.txt", "File doesn't exist!")
+            guest.run("del smoke.txt", "Cannot remove path")
             guest.run("read nonexistent", "File not found.")
-            guest.run("nonexistent", "Command not found or filesystem unavailable.")
-            guest.run("invalid", "Invalid executable or insufficient memory.")
+            guest.run("nonexistent", "Command not found in PATH.")
+            guest.run("./invalid", "Invalid executable or insufficient memory.")
             for _ in range(3):
-                screen = guest.run("large")
+                screen = guest.run("./large")
                 assert "large-elf-ok" in screen, screen
-            guest.run("copy 0:binary 0:copied")
-            guest.run("copy 0:binary 0:copied", "Destination already exists.")
+            guest.run("copy sys:binary sys:copied")
+            guest.run("copy sys:binary sys:copied", "Destination already exists.")
             guest.run("drive 1")
-            guest.run("format")
+            guest.type("format"); guest.wait_for("Disk Partitions and Formatting")
+            guest.key("f"); guest.key("ret"); guest.wait_for("Changes applied."); guest.key("esc")
+            guest.wait_for("DISK1>")
             guest.run("list")
-            guest.run("copy 0:binary 1:crossed")
-            guest.run("drive 0")
+            guest.run("copy sys:binary 1:crossed")
+            guest.run("drive sys")
             # Retained per-drive caches must see child writes, deletions, and block reuse.
             for _ in range(2):
-                guest.run("copy 1:crossed 0:returned")
+                guest.run("copy 1:crossed sys:returned")
                 guest.run("del returned")
                 guest.run("drive 1")
                 assert "crossed" in guest.run("list")
-                guest.run("drive 0")
+                guest.run("drive sys")
             guest.type("edit editing")
             guest.wait_for("Ctrl+S: save")
             assert "Ctrl+S: save" in guest.screen().splitlines()[ROWS - 1]
@@ -266,7 +295,7 @@ def main():
             guest.screenshot(ROOT / "build/graphics-editor.png")
             guest.key("ctrl", "s")
             guest.wait_for("Saved.")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("hexedit editing")
             guest.wait_for("w: save")
             before = guest.terminal_state()["rendered"]
@@ -278,7 +307,7 @@ def main():
             guest.type("00")
             guest.key("w"); guest.wait_for("Saved.")
             guest.screenshot(ROOT / "build/graphics-hex-editor.png")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("edit multiline"); guest.wait_for("Ctrl+S: save")
             guest.key("pgdn")
             page_start = f"line{ROWS - 1:02d}"
@@ -286,25 +315,25 @@ def main():
             guest.key("pgup")
             assert guest.wait_for("line00").startswith("line00")
             guest.key("end"); guest.key("down"); guest.key("z"); guest.key("ctrl", "s")
-            guest.wait_for("Saved."); guest.key("esc"); guest.wait_for("IDE0>")
+            guest.wait_for("Saved."); guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("edit wrapping"); guest.wait_for("Ctrl+S: save")
             lines = guest.screen().splitlines()
             assert lines[0] == "a" * (COLS - 1) + "b" and lines[1].startswith("cd")
             guest.key("ctrl", "end")
             assert guest.terminal_state()["cursor"] == COLS + 2
             guest.key("z"); guest.key("ctrl", "s"); guest.wait_for("Saved.")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("hexedit binary"); guest.wait_for("w: save")
             guest.key("pgdn")
             hex_page = f"{16 * (ROWS - 3):08X}:"
             assert hex_page in guest.wait_for(hex_page), "Hex Page Down did not move a full page"
             guest.key("pgup"); guest.wait_for("00000000:")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("view editing")
             guest.wait_for("PgUp/PgDn: scroll")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             print("PASS guest: text editor, binary editor, viewer", flush=True)
-            guest.type("console-state"); guest.wait_for("Ctrl+S: save")
+            guest.type("./console-state"); guest.wait_for("Ctrl+S: save")
             guest.key("pgdn"); guest.key("q"); guest.key("esc")
             guest.wait_for("w: save")
             guest.key("right"); guest.key("c"); guest.wait_for("Byte value (hex)")
@@ -313,9 +342,9 @@ def main():
             guest.key("pgdn"); assert guest.wait_for(f"line{ROWS - 1:02d}").startswith(f"line{ROWS - 1:02d}")
             guest.key("pgup"); assert guest.wait_for("line00").startswith("line00")
             guest.key("esc"); guest.wait_for("console-restore-ok")
-            guest.wait_for("IDE0>")
+            guest.wait_for("DISK0p2>")
             print("PASS guest: editor/viewer console, cursor, colors, and framebuffer restoration", flush=True)
-            assert "nested-ok" in guest.run("nested")
+            assert "nested-ok" in guest.run("./nested")
             assert "nested.txt" not in guest.run("list")
             guest.run("drawline 10 30 20 30 14")
             state = guest.terminal_state()
@@ -344,32 +373,33 @@ def main():
         # An unsupported VGA adapter must keep its original text geometry and footer.
         guest = Guest(image, scratch, vga="cirrus")
         try:
-            guest.wait_for("IDE0>"); assert not guest.terminal_address()
+            guest.boot_root(); assert not guest.terminal_address()
             guest.type("edit multiline"); guest.wait_for("Ctrl+S: save")
             assert "Ctrl+S: save" in guest.screen().splitlines()[23]
             guest.key("pgdn"); assert guest.wait_for("line23").startswith("line23")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.type("hexedit binary"); guest.wait_for("w: save")
             guest.key("pgdn"); guest.wait_for("00000150:")
-            guest.key("esc"); guest.wait_for("IDE0>")
-            guest.type("console-state"); guest.wait_for("Ctrl+S: save")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
+            guest.type("./console-state"); guest.wait_for("Ctrl+S: save")
             guest.key("right"); guest.key("q"); guest.key("esc")
             guest.wait_for("w: save"); guest.key("right"); guest.key("esc")
             guest.wait_for("PgUp/PgDn: scroll")
             guest.key("pgdn"); assert guest.wait_for("line23").startswith("line23")
             guest.key("pgup"); assert guest.wait_for("line00").startswith("line00")
             guest.key("esc")
-            guest.wait_for("console-restore-ok"); guest.wait_for("IDE0>")
+            guest.wait_for("console-restore-ok"); guest.wait_for("DISK0p2>")
             print("PASS guest: legacy text console geometry and editors", flush=True)
         finally:
             guest.close()
         formatted = Path(scratch) / "formatted-system.bin"
-        shutil.copyfile(ROOT / "os-image.bin", formatted)
+        shutil.copyfile(source_image, formatted)
         guest = Guest(formatted, scratch)
         try:
-            guest.wait_for("IDE0>")
-            guest.run("format")
-            guest.run("list", "Command not found or filesystem unavailable.")
+            guest.boot_root()
+            guest.type("format"); guest.wait_for("Disk Partitions and Formatting")
+            guest.key("f"); guest.wait_for("The running system volume cannot be formatted.")
+            guest.key("esc"); guest.wait_for("DISK0p2>"); guest.run("list sys:/docs", "manual.txt")
         finally:
             guest.close()
         subprocess.run([writer, "--check", str(formatted)], check=True)

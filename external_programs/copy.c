@@ -1,32 +1,20 @@
 #include "../kernel/env_vars.h"
 #include "../kernel/drivers/io/screen.h"
 #include "../kernel/drivers/disk/fs.h"
+#include "../kernel/drivers/disk/volume.h"
 #include "../kernel/drivers/utils/mem.h"
-#include "../kernel/drivers/disk/ata.h"
 #include "../kernel/libc/strings.h"
-int main(env_vars_t *env, char *args) {
-    char source[512], dest[512], source_name[512], dest_name[512];
-    char *token = splice(args, 1, ' '); memcpy(source, token, strlen(token) + 1);
-    token = splice(args, 2, ' '); memcpy(dest, token, strlen(token) + 1);
-    if (source[0] < '0' || source[0] > '3' || source[1] != ':' ||
-        dest[0] < '0' || dest[0] > '3' || dest[1] != ':' || !source[2] || !dest[2]) {
-        print("Usage: copy DRIVE:SOURCE DRIVE:DESTINATION"); print_newline(); return 1;
+int main(env_vars_t *env,char *args) {
+    char source[560],dest[560],a[512],b[512]; uint32_t av,bv;
+    char *token=splice(args,1,' '); if(strlen(token)>=560) return 1; memcpy(source,token,strlen(token)+1);
+    token=splice(args,2,' '); if(strlen(token)>=560) return 1; memcpy(dest,token,strlen(token)+1);
+    if(!*source || !*dest || !fs_resolve(source,&av,a) || !fs_resolve(dest,&bv,b) || (av==bv && !strcmp(a,b))) {
+        print("Usage: copy SOURCE DESTINATION (paths may include a volume, e.g. 1p1:/file)"); print_newline(); return 1;
     }
-    memcpy(source_name, source + 2, strlen(source + 2) + 1);
-    memcpy(dest_name, dest + 2, strlen(dest + 2) + 1);
-    if (source[0] == dest[0] && !strcmp(source_name, dest_name)) return 1;
-    select_drive(source[0] - '0');
-    inode_t info = get_file_info(source_name);
-    if (!info.valid) { print("Source file unavailable."); print_newline(); return 1; }
-    uint32_t sectors = (info.size + 511) / 512;
-    uint8_t *data = (void *)malloc(sectors ? sectors * 512 : 1, 1, 0);
-    if (!data || file_read(source_name, data, sectors, 0) == 2) return 1;
-    select_drive(dest[0] - '0');
-    if (!set_superblock()) { print("Destination filesystem unavailable."); print_newline(); return 1; }
-    if (get_file_info(dest_name).valid) { print("Destination already exists."); print_newline(); return 1; }
-    if (file_create(dest_name, env)) return 1;
-    if (file_write(dest_name, data, info.size, env) != (int)info.size) {
-        file_delete(dest_name, env); print("Copy failed."); print_newline(); return 1;
-    }
-    print("Copied "); print_dec(info.size); print(" bytes."); print_newline(); return 0;
+    inode_t in=get_file_info(source); if(in.valid!=ESFS_FILE) { print("Source file unavailable."); print_newline(); return 1; }
+    uint8_t *data=(void *)malloc(in.size ? in.size:1,0,0);
+    if(!data || file_read_bytes(source,data,in.size,0)!=(int)in.size) return 1;
+    if(get_file_info(dest).valid) { print("Destination already exists."); print_newline(); return 1; }
+    if(!file_replace(dest,data,in.size)) { print("Copy failed."); print_newline(); return 1; }
+    print("Copied "); print_dec(in.size); print(" bytes."); print_newline(); (void)env; return 0;
 }

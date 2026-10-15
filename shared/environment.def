@@ -1,0 +1,10 @@
+/* Persistent defaults, shared by the kernel and the image builder. */
+SZ_ENV("PATH", "sys:/bin")
+SZ_ENV("INCLUDE", "sys:/sys/include")
+SZ_ENV("LIBRARY_PATH", "sys:/sys/lib")
+SZ_ENV("COLOR_FOREGROUND", "15")
+SZ_ENV("COLOR_BACKGROUND", "1")
+SZ_ENV("COLOR_SECONDARY", "14")
+SZ_ENV("CLOCK_OFFSET", "0")
+SZ_ENV("STATUS_POSITION", "top")
+SZ_ENV("HOME", "sys:/home")

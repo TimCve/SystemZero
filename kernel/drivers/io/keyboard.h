@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "../utils/ports.h"
 #include "screen.h"
+#include "../../../shared/input.h"
 
 #define KEYBOARD_PORT 0x60
 
@@ -58,9 +59,17 @@ static const kbd_keycode shft_keycode_table[] __attribute__((unused)) = {
 char get_input_keycode();
 char get_printable_char(char keycode, int i, uint8_t shift);
 typedef struct { uint8_t shift, control, extended, pause; } keyboard_state_t;
-typedef struct { uint8_t code, character, shift, control; } keyboard_event_t;
+struct env_vars;
+void keyboard_bind_env(struct env_vars *);
+typedef struct { uint8_t code, character, shift, control,kind; input_event_t mouse; } keyboard_event_t;
 int kbd_decode(keyboard_state_t *state, uint8_t raw, keyboard_event_t *event);
 void kbd_wait_event(keyboard_state_t *state, keyboard_event_t *event);
 int kbd_readline(char* buffer, int tty_calibration, int buffer_bytes);
+typedef const char *(*kbd_recall_fn)(void *, int direction, const char *current);
+/* Optional application-owned history. Up/Down request a replacement line;
+   ordinary API readline calls use no recall callback. */
+int kbd_readline_recall(char *, int capacity, kbd_recall_fn, void *);
+typedef int (*kbd_complete_fn)(void *,char *,int capacity,int *cursor,int repeated,int reverse);
+int kbd_readline_complete(char *,int capacity,kbd_recall_fn,kbd_complete_fn,void *);
 
 #endif

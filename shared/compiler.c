@@ -34,6 +34,7 @@ typedef struct {
     uint32_t size, capacity, ntokens, pos, pc, nfunctions, nglobals, nlocals;
     uint32_t data_size, ndatafix, ncallfix, nfunctionfix, local_bytes, scope, depth, nloops;
     uint32_t return_type, returns;
+    uint32_t object, ngotfix, gotfix[FUNCTIONS + 1];
     token_t tokens[TOKENS];
     function_t functions[FUNCTIONS];
     variable_t globals[GLOBALS], locals[LOCALS];
@@ -710,7 +711,12 @@ static void entry(compiler_t *c, uint32_t main_index) {
     op2(c, 0x81, 0x7f); byte(c, 4); word(c, SZ_API_VERSION); bad[2] = jump(c, 0x85);
     op2(c, 0x81, 0x7f); byte(c, 8); word(c, SZ_API_COUNT); bad[3] = jump(c, 0x82);
     byte(c, 0xe8); word(c, 0); uint32_t base = c->pc;
-    byte(c, 0x5b); op2(c, 0x81, 0xeb); word(c, base);
+    byte(c, 0x5b); op2(c, 0x81, c->object ? 0xc3 : 0xeb);
+    if (c->object) {
+        if (c->ngotfix == FUNCTIONS + 1) fail(c, "Entry limit exceeded");
+        else c->gotfix[c->ngotfix++] = c->pc;
+        word(c, c->pc - base);
+    } else word(c, base);
     uint32_t argc = c->functions[main_index].argc;
     if (argc) { op2(c, 0x8b, 0x45); byte(c, 12); byte(c, 0x50); }
     call(c, argc, 0, main_index);
@@ -721,8 +727,70 @@ static void entry(compiler_t *c, uint32_t main_index) {
     byte(c, 0xc9); byte(c, 0xc3);
 }
 uint32_t szc_workspace_size(void) { return sizeof(compiler_t); }
-int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t capacity,
-                void *workspace, szc_result_t *result) {
+static void align_object(compiler_t *c) { while (c->pc % 4) byte(c, 0); }
+static void symbol_record(compiler_t *c, uint32_t at, uint32_t name, uint32_t value, uint32_t info, uint32_t section) {
+    patch(c, at, name); patch(c, at + 4, value); patch(c, at + 8, 0); patch(c, at + 12, info | section << 16);
+}
+static uint32_t object_name(compiler_t *c, uint32_t strings, uint32_t name) {
+    uint32_t offset = c->pc - strings; token_t *t = &c->tokens[name];
+    for (uint32_t i = 0; i < t->length; i++) byte(c, c->source[t->start + i]);
+    byte(c, 0); return offset;
+}
+static void section_record(compiler_t *c,uint32_t name,uint32_t type,uint32_t flags,uint32_t offset,
+                           uint32_t bytes,uint32_t link,uint32_t info,uint32_t alignment,uint32_t entsize) {
+    word(c,name); word(c,type); word(c,flags); word(c,0); word(c,offset); word(c,bytes);
+    word(c,link); word(c,info); word(c,alignment); word(c,entsize);
+}
+static void object_output(compiler_t *c,uint32_t main_index,uint32_t data_start) {
+    uint32_t code_end=c->pc, first_global=c->nfunctions+2;
+    uint32_t symbols=first_global+1+c->nfunctions+c->nglobals, symtab=c->pc;
+    for(uint32_t i=0;i<symbols*16;i++) byte(c,0);
+    uint32_t strings=c->pc; byte(c,0);
+    symbol_record(c,symtab+16,0,data_start-ENTRY,0,1);
+    for(uint32_t i=0;i<c->nfunctions;i++) symbol_record(c,symtab+(i+2)*16,0,
+        c->functions[i].referenced ? c->functions[i].thread_address-ENTRY:0,2,1);
+    const char *start="__sz_start"; uint32_t start_name=c->pc-strings;
+    while(*start) byte(c,*start++);
+    byte(c,0);
+    symbol_record(c,symtab+first_global*16,start_name,0,0x12,main_index==NONE ? 0:1);
+    for(uint32_t i=0;i<c->nfunctions;i++) {
+        function_t *f=&c->functions[i]; uint32_t name=object_name(c,strings,f->name);
+        symbol_record(c,symtab+(first_global+1+i)*16,name,f->defined ? f->address-ENTRY:0,0x12,f->defined ? 1:0);
+    }
+    for(uint32_t i=0;i<c->nglobals;i++) {
+        variable_t *v=&c->globals[i]; uint32_t name=object_name(c,strings,v->name);
+        symbol_record(c,symtab+(first_global+1+c->nfunctions+i)*16,name,data_start+v->address-ENTRY,0x11,1);
+    }
+    uint32_t string_bytes=c->pc-strings; align_object(c); uint32_t rel=c->pc;
+    for(uint32_t i=0;i<c->ndatafix;i++) {
+        patch(c,c->datafix[i].at,c->datafix[i].target); word(c,c->datafix[i].at-ENTRY); word(c,1u<<8|9u);
+    }
+    for(uint32_t i=0;i<c->ncallfix;i++) {
+        patch(c,c->callfix[i].at,0xfffffffcu); word(c,c->callfix[i].at-ENTRY);
+        word(c,(first_global+1+c->callfix[i].target)<<8|2u);
+    }
+    for(uint32_t i=0;i<c->nfunctionfix;i++) {
+        patch(c,c->functionfix[i].at,0); word(c,c->functionfix[i].at-ENTRY); word(c,(2+c->functionfix[i].target)<<8|9u);
+    }
+    for(uint32_t i=0;i<c->ngotfix;i++) { word(c,c->gotfix[i]-ENTRY); word(c,10); }
+    uint32_t rel_bytes=c->pc-rel, names=c->pc;
+    const char labels[]="\0.text\0.symtab\0.strtab\0.rel.text\0.shstrtab\0";
+    for(uint32_t i=0;i<sizeof labels;i++) byte(c,labels[i]);
+    align_object(c); uint32_t sections=c->pc;
+    section_record(c,0,0,0,0,0,0,0,0,0);
+    section_record(c,1,1,7,ENTRY,code_end-ENTRY,0,0,4,0);
+    section_record(c,7,2,0,symtab,symbols*16,3,first_global,4,16);
+    section_record(c,15,3,0,strings,string_bytes,0,0,1,0);
+    section_record(c,23,9,0,rel,rel_bytes,2,1,4,8);
+    section_record(c,33,3,0,names,sizeof labels,0,0,1,0);
+    if(c->result->error) return;
+    zero(c->image,ENTRY); c->image[0]=0x7f; c->image[1]='E'; c->image[2]='L'; c->image[3]='F';
+    c->image[4]=c->image[5]=c->image[6]=1; c->image[16]=1; c->image[18]=3; put32(c->image+20,1);
+    put32(c->image+32,sections); c->image[40]=52; c->image[46]=40; c->image[48]=6; c->image[50]=5;
+    c->result->size=c->pc;
+}
+static int compile_mode(const uint8_t *source,uint32_t size,uint8_t *image,uint32_t capacity,
+                        void *workspace,szc_result_t *result,int object) {
     if (!result) return 0;
     *result = (szc_result_t){0};
     if (!source || size > SZC_MAX_SOURCE || !image || capacity < ENTRY || !workspace ||
@@ -732,19 +800,20 @@ int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t c
     }
     compiler_t *c = workspace; zero(c, sizeof *c);
     c->source = source; c->size = size; c->image = image;
+    c->object = object;
     c->capacity = capacity > SZC_MAX_IMAGE ? SZC_MAX_IMAGE : capacity; c->result = result;
     lex(c); if (result->error) return 0;
     declarations(c); if (result->error) return 0;
     uint32_t main_index = NONE;
     for (uint32_t i = 0; i < c->nfunctions; i++) if (named(c, c->functions[i].name, "main")) main_index = i;
-    if (main_index == NONE || !c->functions[main_index].defined) fail(c, "Program requires an int main() function");
-    else {
+    if ((main_index == NONE || !c->functions[main_index].defined) && !object) fail(c, "Program requires an int main() function");
+    else if (main_index != NONE) {
         function_t *main = &c->functions[main_index];
         if (main->type != SZ_INT || main->argc > 1 || (main->argc && main->argtypes[0] != SZ_CHAR_PTR))
             fail(c, "main must return int and take zero arguments or one char* argument");
     }
     if (result->error) return 0;
-    zero(image, ENTRY); c->pc = ENTRY; entry(c, main_index);
+    zero(image, ENTRY); c->pc = ENTRY; if (main_index != NONE) entry(c, main_index);
     for (uint32_t i = 0; i < c->nfunctions && !result->error; i++)
         if (c->functions[i].defined) function_body(c, &c->functions[i]);
     for (uint32_t i = 0; i < c->nfunctions && !result->error; i++) if (c->functions[i].referenced) {
@@ -755,18 +824,19 @@ int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t c
     uint32_t data_start = c->pc;
     for (uint32_t i = 0; i < c->data_size && !result->error; i++) byte(c, c->data[i]);
     for (uint32_t i = 0; i < c->ndatafix && !result->error; i++)
-        patch(c, c->datafix[i].at, data_start + c->datafix[i].target);
+        if (!object) patch(c, c->datafix[i].at, data_start + c->datafix[i].target);
     for (uint32_t i = 0; i < c->ncallfix && !result->error; i++) {
         function_t *f = &c->functions[c->callfix[i].target];
-        if (!f->defined) fail(c, "Called function has no definition");
-        else target(c, c->callfix[i].at, f->address);
+        if (!f->defined && !object) fail(c, "Called function has no definition");
+        else if (!object) target(c, c->callfix[i].at, f->address);
     }
     for (uint32_t i = 0; i < c->nfunctionfix && !result->error; i++) {
         function_t *f = &c->functions[c->functionfix[i].target];
         if (!f->defined) fail(c, "Thread function has no definition");
-        else patch(c, c->functionfix[i].at, f->thread_address);
+        else if (!object) patch(c, c->functionfix[i].at, f->thread_address);
     }
     if (result->error) return 0;
+    if (object) { align_object(c); object_output(c,main_index,data_start); return !result->error; }
     /* ELF32 ET_DYN with one PT_LOAD, vaddr/offset zero. All addresses are relative
        to EBX; calls use relative displacements, so no relocation section is needed. */
     image[0] = 0x7f; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
@@ -778,3 +848,5 @@ int szc_compile(const uint8_t *source, uint32_t size, uint8_t *image, uint32_t c
     put32(image + 76, 7); put32(image + 80, 4096);
     result->size = c->pc; return 1;
 }
+int szc_compile(const uint8_t *s,uint32_t n,uint8_t *out,uint32_t cap,void *w,szc_result_t *r) { return compile_mode(s,n,out,cap,w,r,0); }
+int szc_compile_object(const uint8_t *s,uint32_t n,uint8_t *out,uint32_t cap,void *w,szc_result_t *r) { return compile_mode(s,n,out,cap,w,r,1); }

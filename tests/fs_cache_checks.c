@@ -48,6 +48,9 @@ int main(void) {
         uint32_t files = 0; assert(!esfs_visit(&fs, count_file, &files) && files == 1);
     }
     assert(batches == before); /* Repeated lookups/listing reuse inode sectors. */
+    before = reads;
+    for (int i = 0; i < 10; i++) assert(esfs_find(&fs, "not-a-file", 0, 0) == ESFS_NOT_FOUND);
+    assert(reads == before); /* Hashes skip unrelated filename sectors for missing commands. */
     reads = batches = largest_batch = 0;
     uint32_t actual;
     assert(!esfs_read(&fs, "large", output, 0, sizeof output, &actual));

@@ -1,0 +1,6 @@
+#include <systemzero/io.h>
+
+int main() {
+    sz_print("Hello from a linked SystemZero library!\n");
+    return 0;
+}

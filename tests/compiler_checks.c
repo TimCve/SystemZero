@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
     good("char s[]=\"hello\"; int main() { char *p=s; p++; return *p; }");
     good("int main(){ int i=0; while(i<5){ if(i==3) break; i++; continue; } return i; }");
     good("int worker(int x){return x;} int main(){return thread_join(thread_start(worker,7));}");
+    good("int main(){settings_apply(0,0,31); return settings_apply_colors(0,0,31,14);}");
+    bad("int main(){settings_apply_colors(0,0,31);}", "number");
     bad("void worker(int x){} int main(){thread_start(worker,0);}", "Thread entry");
     bad("int worker(char *x){return 0;} int main(){thread_start(worker,0);}", "Thread entry");
     bad("int worker(int); int main(){thread_start(worker,0);}", "no definition");

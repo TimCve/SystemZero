@@ -1,4 +1,5 @@
 #include "thread.h"
+#include "../drivers/io/input.h"
 #include "timer.h"
 #include "../drivers/utils/mem.h"
 #include "../desktop.h"
@@ -55,7 +56,7 @@ static void prepare(uint32_t slot, env_vars_t *env, thread_entry_t entry, uint32
 }
 static int idle(env_vars_t *env, uint32_t arg) { for (;;) __asm__ volatile("hlt"); return 0; }
 static int desktop_worker(env_vars_t *env, uint32_t arg) {
-    for (;;) { desktop_refresh(); thread_sleep(20); }
+    for (;;) { desktop_refresh(); input_tick(); thread_sleep(10); }
     return 0;
 }
 void threads_init(env_vars_t *env) {

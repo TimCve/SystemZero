@@ -1,17 +1,21 @@
 #include "kernel.h"
 #include "sys_api.h"
 #include "desktop.h"
+#include "variables.h"
 #include "cpu/thread.h"
 #include "../shared/elf.h"
 #include "drivers/utils/ports.h"
 #include "drivers/io/screen.h"
 #include "drivers/io/graphics.h"
 #include "drivers/io/keyboard.h"
+#include "drivers/io/input.h"
 #include "cpu/isr.h"
 #include "cpu/timer.h"
 #include "drivers/disk/ata.h"
+#include "drivers/disk/block.h"
 #include "libc/strings.h"
 #include "drivers/disk/fs.h"
+#include "drivers/disk/volume.h"
 #include "drivers/utils/mem.h"
 
 void sleep(int time) {
@@ -27,19 +31,17 @@ int execute(char *cmd, char *args, env_vars_t *env) {
 
 static int kernel_execute(char *cmd, char *args, env_vars_t *env) {
     uint8_t previous_drive = selected_ata_drive();
-    /* User executables live on the working drive; bundled commands are a fallback. */
     select_drive(env->selected_drive);
-    inode_t info = get_file_info(cmd);
-    if (!info.valid && env->selected_drive != env->system_drive) {
-        select_drive(env->system_drive); info = get_file_info(cmd);
-    }
+    char executable[560];
+    if (!fs_executable(env, cmd, executable, sizeof executable)) { print("Command not found in PATH."); print_newline(); select_drive(previous_drive); return 2; }
+    inode_t info = get_file_info(executable);
     if (!info.valid) { print("Command not found or filesystem unavailable."); print_newline(); select_drive(previous_drive); return 2; }
     uint32_t marker = get_free_ptr();
     uint32_t sectors = (info.size + 511) / 512;
     uint32_t source = malloc(sectors * 512, 1, 0);
     int status = 2;
     elf_plan_t plan;
-    if (!source || file_read(cmd, (void *)source, sectors, 0) == 2 ||
+    if (!source || file_read(executable, (void *)source, sectors, 0) == 2 ||
         !elf_plan((void *)source, info.size, &plan)) {
         print("Invalid executable or insufficient memory."); print_newline();
     } else {
@@ -80,8 +82,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 	// KERNEL INIT PROCESS
 
 	// set pointer for manual memory allocation
-	set_free_ptr(env_vars_ptr->free_mem_ptr);
     mem_bind_env(env_vars_ptr);
+	set_free_ptr(env_vars_ptr->free_mem_ptr);
 
 	// install interrupt service routines
 	print("Installing interrupt service routines...");
@@ -95,6 +97,8 @@ void kmain(env_vars_t* env_vars_ptr) {
 	env_vars_ptr->system_drive = env_vars_ptr->selected_drive;
 
 	// intitialize filesystem
+    block_init(env_vars_ptr);
+    keyboard_bind_env(env_vars_ptr);
 	if (!init_fs(env_vars_ptr)) {
         print("System filesystem unavailable or corrupt. Format it explicitly from the host.");
         print_newline();
@@ -104,6 +108,9 @@ void kmain(env_vars_t* env_vars_ptr) {
 	print("Initialising timer...");
 	init_timer(1000);
     desktop_init(env_vars_ptr);
+    input_init(env_vars_ptr);
+    const char *home=variables_get(env_vars_ptr,"HOME");
+    if(!home || fs_chdir(home)) fs_chdir("sys:/home");
     threads_init(env_vars_ptr);
 	print(" [DONE]"); print_newline();
 
@@ -112,15 +119,15 @@ void kmain(env_vars_t* env_vars_ptr) {
 
 	print_newline();
 
-	char kbd_buffer[2000];
-
 	// startup logo
-	set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x0e);
+	set_term_color((env_vars_ptr->term_color & 0xf0) | env_vars_ptr->desktop->secondary_color);
+    screen_secondary_text(1);
 	print(" _____         _             _____             "); print_newline();
 	print("|   __|_ _ ___| |_ ___ _____|__   |___ ___ ___ "); print_newline();
 	print("|__   | | |_ -|  _| -_|     |   __| -_|  _| . |"); print_newline();
 	print("|_____|_  |___|_| |___|_|_|_|_____|___|_| |___|"); print_newline();
 	print("      |___|                                    "); print_newline();
+    screen_secondary_text(0);
 	set_term_color(env_vars_ptr->term_color);
 	print_newline();
 
@@ -129,29 +136,12 @@ void kmain(env_vars_t* env_vars_ptr) {
 	print_newline();
 	print("All source code can be cloned from: https://github.com/z3r0flag/SystemZero.git");
 	print_newline(); print_newline();
-	print("You are now working from the built-in kernel shell.");
-	print_newline();
-	print("Type \"list\" to list all files on disk, files marked with \'x\' are executable.");
-	print_newline(); print_newline();
-
-	// kernel shell
-	while(1) {
-		select_drive(env_vars_ptr->selected_drive);
-        scroll_terminal();
-        screen_begin_update();
-        uint32_t prompt_row = get_cursor_position() / (COLS * 2);
-        for (uint32_t col = 0; col < COLS; col++) screen_put_cell(prompt_row, col, ' ', env_vars_ptr->term_color);
-
-		set_term_color(((env_vars_ptr->term_color >> 4) * 16) + 0x0e);
-		print("IDE"); print_dec(env_vars_ptr->selected_drive); print("> ");
-		set_term_color(env_vars_ptr->term_color);
-        screen_end_update();
-
-		for(int i = 0; i < 2000; i++) kbd_buffer[i] = 0;
-
-		if (!kbd_readline(kbd_buffer, env_vars_ptr->tty_calibration, 2000)) { print_newline(); continue; }
-
-		execute(splice(kbd_buffer, 0, 0x20), kbd_buffer, env_vars_ptr);
-		if (get_cursor_position() % (COLS * 2)) print_newline();
-	}	
+    /* The startup program is a normal executable, independent of PATH. */
+    for (;;) {
+        if (kernel_execute("sys:/bin/shell", "shell", env_vars_ptr)) {
+            print("Cannot start sys:/bin/shell. Rebuild the system image.");
+            print_newline();
+            for (;;) __asm__ volatile("hlt");
+        }
+    }
 }

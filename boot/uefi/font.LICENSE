@@ -1,0 +1,7 @@
+The 8x8 VGA font in font8x8.h is an IBM public-domain VGA bitmap font,
+extracted from Debian console-setup-linux's Lat15-VGA8.psf.gz and reordered
+to CP437. Debian's console-setup-linux copyright file states that the console
+fonts are public domain. No console-setup program code is included.
+
+https://sources.debian.org/src/console-setup/
+https://github.com/dhepper/font8x8 (documents the public-domain IBM VGA fonts)

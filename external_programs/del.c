@@ -13,7 +13,7 @@ int main(env_vars_t* env_vars_ptr, char* input_buffer) {
 		print("File successfully deleted!"); print_newline();
 		return 0;
 	} else {
-		print("File doesn't exist!"); print_newline();
+		print("Cannot remove path: missing, nonempty directory, or disk error."); print_newline();
 		return 1;
 	}
 }

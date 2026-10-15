@@ -9,7 +9,7 @@
 
 static void render(const text_buffer_t *buffer, uint8_t color, int dirty, const char *notice) {
     screen_begin_update();
-    text_render(buffer->data, buffer->size, buffer->top, buffer->cursor, color);
+    text_render(buffer,1,color);
     uint32_t footer = ROWS - 1, columns = COLS;
     for (uint32_t col = 0; col < columns; col++) screen_put_cell(footer, col, ' ', color);
     screen_put_text(footer, 0, "Ctrl+S: save | Ctrl+R: top | Esc: quit", color);
@@ -34,7 +34,15 @@ int main(env_vars_t *env, char *args) {
     set_scrolling(0); render(&buffer, env->term_color, dirty, notice);
     for (;;) {
         keyboard_event_t event; kbd_wait_event(&keyboard, &event);
+        if(text_mouse(&buffer,env,&event)) { render(&buffer,env->term_color,dirty,notice); continue; }
         uint8_t key = event.code;
+        if(event.control && key==0x2e) { text_copy(&buffer,env); continue; }
+        if(event.control && key==0x2f) {
+            if(text_paste(&buffer,env)) { dirty=1; notice=""; }
+            else notice="Paste empty or file size limit reached.";
+            text_ensure_visible(&buffer); render(&buffer,env->term_color,dirty,notice); continue;
+        }
+        if(key==L_ARROW || key==R_ARROW || key==U_ARROW || key==D_ARROW || key==HOME || key==END || key==PGUP || key==PGDN) text_select_clear(&buffer);
         if (key == ESC) break;
         if (event.control) {
             if (key == 0x1f) {

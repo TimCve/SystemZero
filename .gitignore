@@ -4,6 +4,7 @@ virtual_disks/
 
 *.bin
 *.vmdk
+*.iso
 ESFS_raw_write
 
 external_programs/*.elf

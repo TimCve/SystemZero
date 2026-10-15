@@ -8,6 +8,9 @@ mov ss, ax
 mov sp, 0x9000
 cld
 mov [BOOT_DRIVE], dl
+mov eax, [SYSTEM_LBA]
+inc eax
+mov [packet+8], eax
 sti
 ; Require at least 16 MiB for the checked 1..16 MiB heap.
 mov ah, 0x88
@@ -61,6 +64,7 @@ jmp .stop
 %include "boot/include/switch_to_pm.asm"
 [bits 32]
 BEGIN_PM:
+push dword [SYSTEM_LBA]
 movzx eax, byte [BOOT_DRIVE]
 push eax
 call 0x1000
@@ -72,6 +76,10 @@ dw LOADER_SECTORS
 dw 0x1000, 0
 dq 1
 BOOT_DRIVE: db 0
+; The image builder patches this offset for either a raw or partitioned disk.
+db 'SZLBA32', 0
+SYSTEM_LBA: dd 0
 error: db "Boot failed: disk read or less than 16 MiB RAM", 0
+times 446-($-$$) db 0
 times 510-($-$$) db 0
 dw 0xaa55

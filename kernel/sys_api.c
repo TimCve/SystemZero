@@ -12,6 +12,8 @@
 #include <stddef.h>
 #include "cpu/thread.h"
 #include "desktop.h"
+#include "variables.h"
+#include "drivers/disk/volume.h"
 _Static_assert(offsetof(env_vars_t, api) == SZ_ENV_API_OFFSET, "environment ABI");
 _Static_assert(offsetof(systemzero_api_t, functions) == SZ_API_FUNCTIONS_OFFSET, "service ABI");
 
@@ -45,7 +47,7 @@ SERVICE(print_hex) {
 SERVICE(putchar) { enter(env); print_char(a); return a & 255; }
 SERVICE(newline) { enter(env); print_newline(); return 0; }
 SERVICE(clear) { enter(env); clear(); return 0; }
-SERVICE(set_color) { enter(env); if (a > 255) return -1; env->term_color = a; set_term_color(a); return 0; }
+SERVICE(set_color) { enter(env); if (a > 255) return -1; set_term_color(a); return 0; }
 SERVICE(get_color) { enter(env); return get_term_color(); }
 SERVICE(screen_rows) { enter(env); return screen_rows(); }
 SERVICE(screen_columns) { enter(env); return screen_columns(); }
@@ -99,7 +101,7 @@ SERVICE(getchar) {
         thread_sleep(1);
     }
 }
-SERVICE(file_size) { enter(env); if (!a) return -1; inode_t in = get_file_info(PTR(a)); return in.valid ? (int32_t)in.size : -1; }
+SERVICE(file_size) { enter(env); if (!a) return -1; inode_t in = get_file_info(PTR(a)); return in.valid == ESFS_FILE ? (int32_t)in.size : -1; }
 SERVICE(file_read) { enter(env); if (!a || c > ESFS_MAX_FILE) return -1; return file_read_bytes(PTR(a), PTR(b), c, d); }
 SERVICE(file_write) {
     enter(env); if (!a || (!b && c) || c > ESFS_MAX_FILE) return -1;
@@ -130,7 +132,20 @@ SERVICE(thread_id) { return thread_id(); }
 SERVICE(thread_count) { return thread_count(); }
 SERVICE(clock_time) { return env->desktop ? (int32_t)env->desktop->seconds : -1; }
 SERVICE(status_position) { return env->desktop ? env->desktop->position : -1; }
-SERVICE(settings_apply) { enter(env); return thread_id() == 0 ? desktop_settings(env, a, b, c) : -1; }
+SERVICE(settings_apply) {
+    enter(env); uint32_t secondary = env->desktop ? env->desktop->secondary_color : 14;
+    if (secondary == (c >> 4)) secondary = (c & 15);
+    return thread_id() == 0 ? desktop_settings(env, a, b, c, secondary) : -1;
+}
+SERVICE(settings_apply_colors) { enter(env); return thread_id() == 0 ? desktop_settings(env, a, b, c, d) : -1; }
+SERVICE(env_get) { enter(env); const char *s = variables_get(env, PTR(a)); if (!s || !b || !c) return -1; uint32_t n = strlen((char *)s); if (n >= c) return -1; memcpy(PTR(b), s, n + 1); return n; }
+SERVICE(env_set) { enter(env); return thread_id() == 0 && a && b ? variables_set(env, PTR(a), PTR(b)) : -1; }
+SERVICE(env_apply) { enter(env); if (thread_id()) return -1; variables_apply(env); return 0; }
+SERVICE(mkdir) { enter(env); return a ? fs_mkdir(PTR(a)) : -1; }
+SERVICE(chdir) { enter(env); return thread_id() == 0 && a ? fs_chdir(PTR(a)) : -1; }
+SERVICE(getcwd) { enter(env); return fs_getcwd(PTR(a), b); }
+SERVICE(disk_edit) { enter(env); return thread_id() == 0 ? volume_edit(env, a, b, c) : -1; }
+SERVICE(volume_format) { enter(env); return thread_id() == 0 ? volume_format(env, a, b) : -1; }
 SERVICE(mutex_create) { return thread_mutex_create(); }
 SERVICE(mutex_lock) { return thread_mutex_lock((int)a); }
 SERVICE(mutex_unlock) { return thread_mutex_unlock((int)a); }

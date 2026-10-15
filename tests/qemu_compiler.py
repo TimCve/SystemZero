@@ -9,11 +9,11 @@ import tempfile
 from qemu_smoke import Guest, ROOT
 
 
-def main():
+def main(source_image=ROOT / "os-image.bin"):
     subprocess.run(["make", "build/tests/api_compat.elf"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="systemzero-compiler-qemu-") as scratch:
         image = Path(scratch) / "disk.bin"
-        shutil.copyfile(ROOT / "os-image.bin", image)
+        shutil.copyfile(source_image, image)
         extra = Path(scratch) / "extra.bin"
         with extra.open("wb") as stream: stream.truncate(8 * 1024 * 1024)
         bad = Path(scratch) / "bad.sz"
@@ -25,26 +25,26 @@ def main():
             subprocess.run([writer, "--replace", str(image), name, str(source)], check=True)
         guest = Guest(image, scratch, extra)
         try:
-            guest.wait_for("IDE0>")
+            guest.boot_root()
             initial_heap = guest.heap_pointer()
-            guest.run("cc", "Usage: cc SOURCE OUTPUT")
+            guest.run("cc", "Usage: cc [-c] SOURCE OUTPUT")
             guest.run("cc missing.sz output", "Source file is missing or exceeds 64 KiB.")
-            guest.run("cc hello.sz hello.sz", "Source and output must have different names.")
-            guest.run("cc hello.sz hello")
-            assert "compiled inside SystemZero" in guest.run("hello")
-            assert "1 4 9 16 25" in guest.run("hello")
-            guest.run("copy 0:hello 0:saved-hello")
+            guest.run("cc sys:/home/examples/hello.sz sys:/home/examples/hello.sz", "Source and output must have different names.")
+            guest.run("cc sys:/home/examples/hello.sz hello")
+            assert "compiled inside SystemZero" in guest.run("./hello")
+            assert "1 4 9 16 25" in guest.run("./hello")
+            guest.run("copy sys:hello sys:saved-hello")
             assert "bad.sz:2:11:" in guest.run("cc bad.sz hello", "bad.sz:2:11:")
-            assert "compiled inside SystemZero" in guest.run("hello"), "A compile error damaged the previous executable"
-            assert "api-compat-ok" in guest.run("api-check")
-            guest.run("cc files.sz files")
-            assert "Created inside SystemZero." in guest.run("files")
+            assert "compiled inside SystemZero" in guest.run("./hello"), "A compile error damaged the previous executable"
+            assert "api-compat-ok" in guest.run("./api-check")
+            guest.run("cc sys:/home/examples/files.sz files")
+            assert "Created inside SystemZero." in guest.run("./files")
             guest.run("cc compiler-test.sz ctest")
-            screen = guest.run("ctest")
+            screen = guest.run("./ctest")
             assert "compiler-language-ok" in screen and "-2147483648" in screen and "FFFFFFFF" in screen, screen
-            guest.run("ctest")  # Repeated allocations/nested execution must reclaim memory.
-            guest.run("cc draw.sz draw")
-            guest.run("draw")
+            guest.run("./ctest")  # Repeated allocations/nested execution must reclaim memory.
+            guest.run("cc sys:/home/examples/draw.sz draw")
+            guest.run("./draw")
             state = guest.terminal_state()
             for x, y, expected in ((20, 80, 0xffff55), (400, 60, 0xff5555)):
                 address = state["pixels"] + (y * state["pitch"] + x) * 4
@@ -52,27 +52,30 @@ def main():
             guest.screenshot(ROOT / "build/compiler-graphics.png")
             guest.run("cls")
             guest.run("cc input.sz input")
-            guest.type("input"); guest.wait_for("Input:")
+            guest.type("./input"); guest.wait_for("Input:")
             guest.type("xyz"); guest.wait_for("Key:"); guest.key("q")
             screen = guest.wait_for("input-ok")
             assert "Text: xyz" in screen and "113" in screen
-            guest.wait_for("IDE0>"); guest.run("cls")
-            guest.type("input"); guest.wait_for("Input:"); guest.key("esc")
-            guest.wait_for("input-cancelled"); guest.wait_for("IDE0>")
+            guest.wait_for("DISK0p2>"); guest.run("cls")
+            guest.type("./input"); guest.wait_for("Input:"); guest.key("esc")
+            guest.wait_for("input-cancelled"); guest.wait_for("DISK0p2>")
             # Write source with the guest editor, compile it, and execute the result.
             guest.run("touch live.sz")
             guest.type("edit live.sz"); guest.wait_for("Ctrl+S: save")
             guest.type('int main() {\nprint("guest-written");\nreturn 0;\n}\n', submit=False)
             guest.key("ctrl", "s"); guest.wait_for("Saved.")
-            guest.key("esc"); guest.wait_for("IDE0>")
+            guest.key("esc"); guest.wait_for("DISK0p2>")
             guest.run("cc live.sz live")
-            assert "guest-written" in guest.run("live")
+            assert "guest-written" in guest.run("./live")
             # cc is found on IDE0 while source/output and the resulting program live on IDE1.
-            guest.run("drive 1"); guest.run("format")
-            guest.run("copy 0:hello.sz 1:hello.sz")
+            guest.run("drive 1")
+            guest.type("format"); guest.wait_for("Disk Partitions and Formatting")
+            guest.key("f"); guest.key("ret"); guest.wait_for("Changes applied."); guest.key("esc")
+            guest.wait_for("DISK1>")
+            guest.run("copy sys:/home/examples/hello.sz 1:hello.sz")
             guest.run("cc hello.sz other")
-            assert "compiled inside SystemZero" in guest.run("other")
-            guest.run("drive 0")
+            assert "compiled inside SystemZero" in guest.run("./other")
+            guest.run("drive sys")
             assert guest.heap_pointer() == initial_heap, "Compiler or native API execution leaked temporary heap memory"
         except BaseException:
             print(guest.screen())
@@ -87,7 +90,7 @@ def main():
         compiled = restored.read_bytes()
         subprocess.run([writer, "--extract", str(image), "saved-hello", str(restored)], check=True)
         assert restored.read_bytes() == compiled, "A compile error changed the previous executable bytes"
-        subprocess.run([writer, "--extract", str(image), "language.txt", str(restored)], check=True)
+        subprocess.run([writer, "--extract", str(image), "docs/language.txt", str(restored)], check=True)
         assert restored.read_bytes() == (ROOT / "docs/language.md").read_bytes()
         subprocess.run([writer, "--check", str(image)], check=True)
         subprocess.run([writer, "--check", str(extra)], check=True)

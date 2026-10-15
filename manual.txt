@@ -1,279 +1,280 @@
-SystemZero User Manual - Written by Zer0flag, its sole developer
-
-command : cc
-________________________________________________________________________________
-DESCRIPTION:
-Compiles C-like source text into a native executable inside SystemZero.
-
-    > cc hello.sz hello
-    > hello
-
-The build installs hello.sz, files.sz, draw.sz, and threads.sz as source examples.
-Use touch to create a source file, edit to write it, Ctrl+S to save, and Escape
-to leave the editor. Source and output must have different names.
-
-Supported: int, char, void, pointers, arrays, functions, variables, strings,
-if/else, while, break/continue, return, arithmetic, and short-circuit logic.
-Kernel services are built in: print, print_dec, print_hex, putchar, newline,
-clear, set_color, get_color, screen_rows, screen_columns, put_text, put_cell,
-begin_update, end_update, draw_pixel, draw_line, alloc, memcpy, memset, strlen,
-readline, getchar, file_size, file_read, file_write, file_delete, file_create,
-sleep, execute, thread_start, thread_join, thread_yield, thread_sleep, thread_id,
-thread_count, mutex_create, mutex_lock, mutex_unlock, clock_time, status_position,
-and settings_apply. File sizes, read counts, and offsets are in bytes.
-
-    int main() {
-        print("Hello from SystemZero!\n");
-        return 0;
-    }
-
-Source/output are on the selected drive. The shell searches that drive first,
-then the system drive for bundled commands. Output is replaced only after a
-successful compile; errors show filename:line:column and return status 1.
-The first version has no includes, floating point, structs, for/switch,
-general function-pointer declarations, variadic calls, or separate object/library linking.
-Pass an int worker(int argument) function name to thread_start to create a worker.
-Use mutexes for shared data; the command waits for its workers before exiting.
-Source limit: 64 KiB. Executable limit: 256 KiB.
-Use view language.txt for the full syntax and API reference.
-
-
-command : settings
-________________________________________________________________________________
-DESCRIPTION:
-Graphical clock, status bar, and terminal color settings.
-
-    > settings
-
-Tab/Shift+Tab selects a field. Arrow keys adjust values and navigate the color
-palettes; digits enter hours/minutes/seconds. Enter saves and Escape cancels.
-The clock uses 24-hour HH:MM:SS. The status bar can sit at the top or bottom.
-Foreground/background palettes show all 16 colors with a text preview.
-Settings and the clock offset are saved in systemzero.cfg on the system drive.
-The previous console is restored when you close settings.
-
-
-command : cls
-________________________________________________________________________________
-DESCRIPTION:
-A program that clears the screen (yes, only that).
-
-EXAMPLE USAGE:
-
-    > cls
-
-will clear the screen.
-
-
-command : color
-________________________________________________________________________________
-DESCRIPTION:
-A program that allows you to change the terminal color scheme.
-
-OPTIONS:
-
-    > color [0-15] [0-15]
-
-the first parameter is the background,
-the second parameter is the foreground.
-
-VGA COLOR TRANSLATIONS:
-0  - black
-1  - blue
-2  - green
-3  - cyan
-4  - red
-5  - magenta
-6  - brown
-7  - white
-8  - gray
-9  - light blue
-10 - light green
-11 - light cyan
-12 - light red
-13 - light magenta
-14 - yellow
-15 - bright white
-
-EXAMPLE USAGE:
-
-    > color 1 15
-
-will bring you back to the default color scheme (white on blue).
-
-
-command : copy
-________________________________________________________________________________
-DESCRIPTION:
-A program that allows you to copy files both within a single drive or across
-multiple drives.
-
-OPTIONS:
-
-    > copy x:<source_file> y:<destination_file>
-
-will copy source_file located on the drive with index of x into a file called
-destination_file which will be located on drive with index of y.
-
-EXAMPLE USAGE:
-
-    > copy 0:LICENSE 1:LICENSE_copy
-
-will copy LICENSE from IDE0 to LICENSE_copy on IDE1.
-
-
-command : del
-________________________________________________________________________________
-DESCRIPTION:
-A program that deletes a file.
-
-EXAMPLE USAGE:
-
-    > del LICENSE
-
-will delete the LICENSE file.
-
-
-command : drive
-________________________________________________________________________________
-DESCRIPTION:
-A program that changes your selected drive.
-
-EXAMPLE USAGE:
-
-    > drive 2
-
-will set your drive to IDE2.
-
-
-command : drives
-________________________________________________________________________________
-DESCRIPTION:
-A program that lets you view your available drives.
-
-EXAMPLE USAGE:
-
-    > drives
-
-will list all your possible drives, they can have a status of 'absent' or
-'exists'.
-
-
-command : edit
-________________________________________________________________________________
-DESCRIPTION:
-A program that lets you edit text files.
-
-EXAMPLE USAGE:
-
-    > edit LICENSE
-
-will open LICENSE for editing.
-
-KEYBINDINGS:
-ctrl+s    save
-ctrl+r    reset cursor to top left
-esc       quit
-arrows    move through visual lines, preserving column with up/down
-home/end  move to the start/end of the visual line
-ctrl+home/ctrl+end  move to the start/end of the file
-pgup      move up one page
-pgdn      move down one page
-tab       insert a tab (displayed with four-column tab stops)
-backspace/delete  remove the previous/current character
-
-The cursor stays visible as you type and move. Only changed screen cells are
-repainted. A modified marker remains until the file is saved. Escape exits
-without saving unsaved changes.
-
-
-command : format
-________________________________________________________________________________
-DESCRIPTION:
-A program that formats the selected drive with ESFS 
-(will not remove the SystemZero kernel if it is on the drive).
-
-!!! NOTE !!! 
-Use this carefully! It will wipe all your files on that drive!
-
-EXAMPLE USAGE:
-
-    IDE3> format
-
-will format IDE3 with ESFS.
-
-
-command : hexedit
-________________________________________________________________________________
-DESCRIPTION:
-A program that lets you edit files in hex mode.
-
-EXAMPLE USAGE:
-
-    > hexedit LICENSE
-
-will open LICENSE for editing in hex mode.
-The display shows 16 bytes per row, an eight-digit offset, and an ASCII column.
-Arrows move the selected byte; Page Up/Down moves a full page. The c and i keys
-change or insert a byte, d/Delete removes it, and Backspace removes the previous
-byte. Press w or Ctrl+S to save. Escape cancels byte entry or exits the editor.
-Home/End move within a row; Ctrl+Home/Ctrl+End move to the file boundaries.
-
-
-command : list
-________________________________________________________________________________
-DESCRIPTION:
-A program that lists all the files on the selected drive and show their size.
-
-EXAMPLE USAGE:
-
-    IDE0> list
-
-will list all files on IDE0 and show their size.
-
-
-command : read
-________________________________________________________________________________
-DESCRIPTION:
-A program that will dump all the text from a file onto the screen.
-
-EXAMPLE USAGE:
-
-    > read LICENSE
-
-dumps all text from LICENSE onto the screen (unreadable).
-
-
-command : touch
-________________________________________________________________________________
-DESCRIPTION:
-A program that will create a file with the specified name (if that file
-doesn't already exist).
-
-EXAMPLE USAGE:
-
-    > touch test.txt
-
-will create an empty file called test.txt
-
-
-command : view
-________________________________________________________________________________
-DESCRIPTION:
-A program that will allow you to read a file with scrolling.
-
-OPTIONS:
-
-    > view LICENSE
-
-will view LICENSE from the start.
-
-    > view LICENSE 10
-
-will view LICENSE from the 10th line.
-
-KEYBINDINGS:
-pgup    scroll up
-pgdn    scroll down
-
-Thanks for reading the SystemZero manual.
+SystemZero user manual
+======================
+
+The kernel runs sys:/bin/shell at startup, in /home at DISK0p2/home>.
+Bundled commands are in /bin.
+Use sys:/ to address the system volume from any directory or disk.
+
+The host target make iso builds SystemZero-install.iso for x64 UEFI DVD/USB
+installation. It replaces all partitions on the selected destination disk.
+Read sys:/docs/install.txt for USB preparation, hardware limits, and VM testing.
+
+Up recalls older commands; Down recalls newer ones and restores unfinished
+input after the newest entry. Edit a recalled command, then press Enter to
+run it. Each shell keeps its last 64 commands until it exits. Empty commands
+and consecutive duplicates are omitted. Escape cancels input.
+
+Quick start
+-----------
+  list
+  list sys:/bin
+  touch app.sz
+  edit app.sz
+  cc app.sz app
+  ./app
+
+Edit saves with Ctrl+S and exits with Escape. Built-in functions such as
+print and draw_line need no header or extra library object.
+
+Source example:
+  int main() {
+      print("Hello from SystemZero!\n");
+      return 0;
+  }
+
+Commands
+--------
+Square brackets mark optional arguments. Empty or whitespace-only shell input
+prints another prompt without executing a command.
+
+Tab completes command names from PATH and configured file/path arguments.
+Repeated Tab cycles matches; Shift+Tab reverses. Files end with a space and
+directories with /. Names containing spaces are quoted automatically. Quoted
+paths and backslash escapes can also be typed directly.
+
+Rules are stored beside environment settings in sys:/sys/config/completion:
+  list=paths
+  edit=paths
+  zedit=paths
+  hexedit=paths
+  cd=directories
+  mycommand=paths
+Use paths for files/directories, directories for directories only, or none
+to disable argument completion. Rules apply to every argument; command names
+use the executable's basename. # introduces a comment; the last valid rule
+wins. Edit with zedit sys:/sys/config/completion; changes apply on the next
+completion. The rule file is limited to 8 KiB and completion cycles the first
+128 distinct matches. Rebuilding preserves your rules.
+
+Files and directories:
+  Command                       Purpose
+  ----------------------------  ----------------------------------------
+  list [PATH]                   List files, sizes, and directories
+  tree [PATH]                   Show files and directories recursively
+  mkdir PATH                    Create a directory
+  cd [PATH]                     Change directory; no path selects HOME
+  pwd                           Show the current volume-qualified path
+  drive VOLUME                  Select a volume, e.g. sys or 1p1
+  drives                        List disks and their controller types
+  touch FILE                    Create an empty file
+  copy SOURCE DESTINATION       Copy a file; destination must be absent
+  del PATH                      Remove a file or empty directory
+  read [-x] FILE [SECTOR]        Print file data; -x prints hex bytes
+  view FILE [LINE]              Open a scrolling viewer
+  edit FILE                     Open the text editor
+  hexedit FILE                  Open the byte editor
+  zedit SOURCE [CC OPTIONS]     Open or create source with IDE features
+
+The read sector and view line arguments are zero-based. Listing markers:
+[d] directory, [x] executable, [-] data file. Paths are case sensitive.
+
+tree defaults to the current directory. Use tree sys:/home to display a
+different directory or volume. Entries are sorted by name; directory names
+end with /. A final line counts directories and files below the root.
+
+Programs and libraries:
+  Command                       Purpose
+  ----------------------------  ----------------------------------------
+  cc SOURCE OUTPUT [LIB ...]    Compile and link an executable
+  cc -c SOURCE OUTPUT.o         Compile an object
+  ld OUTPUT OBJECT ...          Link objects and archives
+  ./PROGRAM [ARGS]              Run a program in the current directory
+  shell                         Open another shell; exit returns
+
+cc also accepts -I DIRECTORY. Source and output must differ. Compile/link
+errors retain the output file. Built-ins are listed in the language reference.
+
+SDK example from /home:
+  cc examples/sdk.sz sdk io.o
+  ./sdk
+
+io.o, fs.o, memory.o, thread.o, and env.o are SDK wrapper objects.
+system.a contains all groups. Use the archive or group objects, not both.
+Header names use systemzero/, such as #include <systemzero/io.h>.
+
+Display, settings, and disks:
+  Command                       Purpose
+  ----------------------------  ----------------------------------------
+  cls                           Clear the console
+  color BACKGROUND FOREGROUND   Save palette indices, each 0-15
+  drawline X1 Y1 X2 Y2 COLOR     Draw a framebuffer line
+  settings                      Set clock, bar position, and colors
+  env                           Edit persistent environment variables
+  set NAME                      Display an environment value
+  set NAME VALUE                Save a value; spaces are supported
+  diskman                       Open partitioning and formatting
+  format                        Open the same disk utility
+
+Paths and layout
+----------------
+  Path                          Contents / meaning
+  ----------------------------  ----------------------------------------
+  sys:/bin                      Bundled commands
+  sys:/home                     User workspace
+  sys:/home/examples            Source examples
+  sys:/docs                     Manual, references, and license
+  sys:/sys/config/environment   Saved variables and settings
+  sys:/sys/include/systemzero   Guest compiler SDK headers
+  sys:/sys/lib                  SDK objects and system.a
+  1p1:/source/app.sz             File on partition 1 of disk 1
+  ./app                         File in the current directory
+  /                             Selected volume's root
+  ..                            Parent directory
+
+The default disk is 166 MiB: partition 0p1: is 64 MiB FAT32 EFI boot;
+partition 0p2: is the 100 MiB ESFS system volume. BIOS and UEFI use this disk.
+Paths are limited to 511 bytes; file payloads to 916,992 bytes.
+
+Environment
+-----------
+  Variable                      Default / purpose
+  ----------------------------  ----------------------------------------
+  HOME                          sys:/home; startup directory and cd
+  PATH                          sys:/bin; command directories
+  INCLUDE                       sys:/sys/include; header directories
+  LIBRARY_PATH                  sys:/sys/lib; object/archive directories
+  COLOR_FOREGROUND              15; terminal text palette index
+  COLOR_BACKGROUND              1; background palette index
+  COLOR_SECONDARY               14; prompt and logo palette index
+  STATUS_POSITION               top; top or bottom
+  CLOCK_OFFSET                  0; seconds added to hardware RTC time
+  PWD                           Read-only current directory
+  SYSTEM_VOLUME                 Read-only system volume, usually 0p2:
+  VERSION                       Read-only kernel version
+
+Directory lists use semicolons, e.g. sys:/bin;1p1:/apps. A local executable
+runs as ./app unless its directory is in PATH. Both text colors must differ
+from the background. The clock displays 24-hour HH:MM:SS.
+
+Mouse and clipboard
+-------------------
+Left-click places the insertion point in the current command, text editor,
+or hex editor. Drag selects text or bytes. Ctrl+C copies; Ctrl+V pastes and
+replaces a selection in the current command or editor. View supports copying.
+The guest clipboard is shared across programs and holds up to 64 KiB. Hex
+copy/paste uses raw bytes. Text selections preserve tabs and line breaks.
+
+The wheel scrolls three lines in editors, the viewer, and terminal output.
+Scrolling an editor leaves its insertion point in place. The terminal keeps
+2,048 output rows; Shift+Page Up/Page Down also scrolls output history.
+Typing returns to the live prompt. Up/Down recalls shell commands.
+Command paste converts line breaks/control characters into spaces, so pasted
+multiline text cannot submit commands; input stops at the command buffer limit.
+PS/2 and USB mice are enabled automatically by the supplied QEMU profiles.
+
+Editor and viewer keys
+----------------------
+Zedit numbers source lines in its left gutter. Wrapped continuations leave
+the number blank; clicks and selection target the source beside the gutter.
+Zedit uses the text editor's navigation and save keys, plus:
+  Key                           Action
+  ----------------------------  ----------------------------------------
+  Ctrl+Space                    Open completion at the cursor
+  Up / Down in completion       Select a suggestion
+  Tab / Enter in completion     Complete the identifier
+  Escape                        Close completion, or quit if closed
+  F5                            Save, compile, and run in a run console
+  Any key after run             Return to the same editor view
+
+Completion appears as you type two or more identifier characters. It shows
+function argument types/names and the defining header or local scope.
+Built-ins are identified as kernel APIs. Syntax colors mark keywords,
+strings, comments, numbers, functions, variables, and include directives.
+F5 runs only after a successful build; errors and program output remain
+visible until a key is pressed. A .sz source builds to the same path without
+.sz; other source names build to NAME.run. zedit links system.a by default.
+Pass other cc link options explicitly, e.g. zedit app.sz io.o -I headers.
+
+Text editor:
+  Key                           Action
+  ----------------------------  ----------------------------------------
+  Ctrl+S                        Save
+  Ctrl+C / Ctrl+V               Copy / paste selection
+  Mouse wheel                   Scroll without moving insertion point
+  Escape                        Exit; discard unsaved changes
+  Arrows                        Move cursor through visual lines
+  Home / End                    Start / end of visual line
+  Ctrl+Home / Ctrl+R            Start of file
+  Ctrl+End                      End of file
+  Page Up / Page Down           Move one page
+  Tab                           Insert tab; displayed at 4-column stops
+  Backspace / Delete            Remove previous / current character
+
+Hex editor (16 bytes per row, hex offsets, ASCII column):
+  Key                           Action
+  ----------------------------  ----------------------------------------
+  w / Ctrl+S                    Save
+  Ctrl+C / Ctrl+V               Copy / paste raw selected bytes
+  c / i                         Change / insert a byte
+  d / Delete                    Remove selected byte
+  Backspace                     Remove previous byte
+  Arrows                        Select byte
+  Home / End                    First / last byte in row
+  Ctrl+Home / Ctrl+End          File boundaries
+  Page Up / Page Down           Move one page
+  Escape                        Cancel byte entry or exit
+
+Viewer: Up/Down moves one line; Page Up/Down moves one page; Home returns
+to the start; End shows the end; Escape exits. Drag selects text; Ctrl+C copies.
+Closing an editor or viewer restores the saved console text, graphics, colors,
+cursor, selection, and scrollback.
+
+Settings and environment editor
+-------------------------------
+  Utility       Key                  Action
+  ------------  -------------------  ------------------------------------
+  settings      Tab / Shift+Tab      Select field
+                Arrows               Adjust time, position, or color
+                Digits               Enter hours, minutes, seconds
+                Enter                Save
+                Escape               Cancel and exit
+  env           Up / Down            Select variable
+                Tab                  Select name or value
+                Ctrl+N               Create variable
+                Ctrl+S               Save
+                Escape               Exit
+
+Palette:
+  Index  Color          Index  Color
+  -----  -------------  -----  -------------
+      0  Black              8  Gray
+      1  Blue               9  Light blue
+      2  Green             10  Light green
+      3  Cyan              11  Light cyan
+      4  Red               12  Light red
+      5  Magenta           13  Light magenta
+      6  Brown             14  Yellow
+      7  White             15  Bright white
+
+Partitioning and formatting
+---------------------------
+  Key                           Action
+  ----------------------------  ----------------------------------------
+  Left / Right                  Select physical disk
+  Up / Down                     Select volume
+  Digits / Backspace            Edit new partition size in MiB
+  G / M                         Create GPT / MBR table
+  C                             Create partition in free space
+  D                             Delete selected partition
+  F                             Format selected volume as ESFS
+  Enter                         Apply the displayed pending operation
+  Escape                        Cancel operation or close utility
+
+Formatting removes a volume's files. Creating a table replaces the disk
+layout. New partitions need formatting. The running system disk's table,
+EFI boot partition, and system volume are protected.
+
+References
+----------
+  view sys:/docs/language.txt    Language, built-ins, SDK, and linker
+  view sys:/docs/storage.txt     Volumes, paths, variables, and host tools

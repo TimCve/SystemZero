@@ -1,54 +1,34 @@
+#include "source_includes.h"
 #include "../shared/compiler.h"
-#include "../shared/sys_api.h"
-#include "../kernel/env_vars.h"
-#include "../kernel/drivers/io/screen.h"
-#include "../kernel/drivers/disk/fs.h"
-#include "../kernel/drivers/disk/ata.h"
-#include "../kernel/drivers/utils/mem.h"
-#include "../kernel/libc/strings.h"
-
-static int word(char **args, char *out, uint32_t capacity) {
-    while (**args == ' ') (*args)++;
-    uint32_t n = 0;
-    while (**args && **args != ' ') {
-        if (n + 1 >= capacity) return -1;
-        out[n++] = *(*args)++;
+#include "../shared/preprocess.h"
+int main(env_vars_t *env,char *args) {
+    char command[560],source_name[560],output[560],token[560]; int object=0;
+    if(tc_word(&args,command,sizeof command)<1 || tc_word(&args,source_name,sizeof source_name)<1) goto usage;
+    if(!strcmp(source_name,"-c")) { object=1; if(tc_word(&args,source_name,sizeof source_name)<1) goto usage; }
+    if(tc_word(&args,output,sizeof output)<1) goto usage;
+    if(!strcmp(source_name,output)) { print("Source and output must have different names."); print_newline(); return 1; }
+    sz_link_input_t objects[SZ_LINK_OBJECTS]; uint32_t count=1; includes_t includes={.env=env};
+    int next;
+    while((next=tc_word(&args,token,sizeof token))>0) {
+        if(!strcmp(token,"-I")) { if(tc_word(&args,includes.extra_include,sizeof includes.extra_include)<1) goto usage; }
+        else { if(object || count==SZ_LINK_OBJECTS || !tc_object(env,token,&objects[count++])) return 1; }
     }
-    out[n] = 0; return n;
-}
-int main(env_vars_t *env, char *args) {
-    char command[512], source_name[512], output_name[512], extra[2];
-    if (word(&args, command, sizeof command) < 1 ||
-        word(&args, source_name, sizeof source_name) < 1 ||
-        word(&args, output_name, sizeof output_name) < 1 || word(&args, extra, sizeof extra)) {
-        print("Usage: cc SOURCE OUTPUT"); print_newline();
-        print("Compile a C-like source file into a native executable.");
-        print_newline(); print("Example: cc hello.sz hello"); print_newline(); return 1;
-    }
-    if (!strcmp(source_name, output_name)) {
-        print("Source and output must have different names."); print_newline(); return 1;
-    }
-    if (!env->api || env->api->magic != SZ_API_MAGIC || env->api->version != SZ_API_VERSION ||
-        env->api->count < SZ_API_COUNT) {
-        print("Compiler requires SystemZero kernel API version 1."); print_newline(); return 1;
-    }
-    select_drive(env->selected_drive); set_term_color(env->term_color);
-    inode_t source_info = get_file_info(source_name);
-    if (!source_info.valid || source_info.size > SZC_MAX_SOURCE) {
-        print("Source file is missing or exceeds 64 KiB."); print_newline(); return 1;
-    }
-    uint32_t sectors = (source_info.size + 511) / 512;
-    uint8_t *source = (void *)malloc(sectors ? sectors * 512 : 1, 1, 0);
-    uint8_t *image = (void *)malloc(SZC_MAX_IMAGE, 1, 0);
-    void *workspace = (void *)malloc(szc_workspace_size(), 1, 0);
-    if (!source || !image || !workspace) { print("Not enough memory to compile."); print_newline(); return 1; }
-    if (file_read(source_name, source, sectors, 0) == 2) { print("Cannot read source file."); print_newline(); return 1; }
+    if(next<0) goto usage;
+    inode_t in=get_file_info(source_name); if(in.valid!=ESFS_FILE || in.size>SZC_MAX_SOURCE) { print("Source file is missing or exceeds 64 KiB."); print_newline(); return 1; }
+    uint8_t *source=(void *)malloc(in.size ? in.size:1,0,0),*expanded=(void *)malloc(SZC_MAX_SOURCE,0,0),*image=(void *)malloc(SZC_MAX_IMAGE,0,0);
+    void *preprocessor=(void *)malloc(sz_preprocess_workspace_size(),0,0),*workspace=(void *)malloc(szc_workspace_size(),0,0);
+    if(!source || !expanded || !image || !preprocessor || !workspace) return 1;
+    if(file_read_bytes(source_name,source,in.size,0)!=(int)in.size) return 1;
+    sz_preprocess_result_t prep; int bytes=sz_preprocess(source,in.size,source_name,expanded,SZC_MAX_SOURCE,preprocessor,source_include,&includes,&prep);
+    if(bytes<0) { print(source_name); print(":"); print_dec(prep.line); print(": "); print((char *)prep.error); print_newline(); return 1; }
     szc_result_t result;
-    if (!szc_compile(source, source_info.size, image, SZC_MAX_IMAGE, workspace, &result)) {
-        print(source_name); print(":"); print_dec(result.line); print(":"); print_dec(result.column);
-        print(": "); print((char *)result.error); print_newline(); return 1;
+    if(!szc_compile_object(expanded,bytes,image,SZC_MAX_IMAGE,workspace,&result)) {
+        print(source_name); print(":"); print_dec(result.line); print(":"); print_dec(result.column); print(": "); print((char *)result.error); print_newline(); return 1;
     }
-    if (!file_replace(output_name, image, result.size)) { print("Cannot save executable."); print_newline(); return 1; }
-    print("Compiled "); print(output_name); print(" ("); print_dec(result.size);
-    print(" bytes)."); print_newline(); return 0;
+    if(object) {
+        if(!file_replace(output,image,result.size)) return 1;
+        print("Compiled object "); print(output); print_newline(); return 0;
+    }
+    objects[0]=(sz_link_input_t){image,result.size,source_name}; return tc_link(objects,count,output);
+usage: print("Usage: cc [-c] SOURCE OUTPUT [OBJECT.o or LIBRARY.a ...] [-I DIRECTORY]"); print_newline(); return 1;
 }

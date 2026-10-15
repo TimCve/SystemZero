@@ -77,12 +77,15 @@ int elf_load(const void *source, uint32_t bytes, const elf_plan_t *expected, voi
     const rel_t *r = (const rel_t *)(memory + (relsz ? rel - plan.first : 0));
     /* Validate the complete relocation table before applying any entry. */
     for (uint32_t i = 0; i < relsz / sizeof(rel_t); i++) {
-        if (r[i].info != 8 || r[i].offset % 4 || !mapped(file, h, r[i].offset, 4, 1)) return 0;
+        if (r[i].info != 8 || !mapped(file, h, r[i].offset, 4, 1)) return 0;
         if (r[i].offset < rel + relsz && rel < r[i].offset + 4) return 0;
     }
     uint32_t bias = (uint32_t)(uintptr_t)memory - plan.first;
     for (uint32_t i = 0; i < relsz / sizeof(rel_t); i++) {
-        uint32_t *value = (uint32_t *)(memory + r[i].offset - plan.first); *value += bias;
+        uint8_t *p = memory + r[i].offset - plan.first;
+        uint32_t value = p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+        value += bias;
+        for (uint32_t j = 0; j < 4; j++) p[j] = value >> (j * 8);
     }
     return 1;
 }

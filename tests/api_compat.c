@@ -8,15 +8,15 @@ int main(env_vars_t *env, char *args) {
     systemzero_api_t copy = *original; int failed = 0;
     env->api = &copy;
     copy.version++;
-    if (execute("hello", "hello", env) != 2) failed = 1;
+    if (execute("./hello", "./hello", env) != 2) failed = 1;
     copy.version = SZ_API_VERSION; copy.magic = 0;
-    if (execute("hello", "hello", env) != 2) failed = 1;
+    if (execute("./hello", "./hello", env) != 2) failed = 1;
     copy.magic = SZ_API_MAGIC; copy.count = SZ_API_COUNT - 1;
-    if (execute("hello", "hello", env) != 2) failed = 1;
+    if (execute("./hello", "./hello", env) != 2) failed = 1;
     env->api = 0;
-    if (execute("hello", "hello", env) != 2) failed = 1;
+    if (execute("./hello", "./hello", env) != 2) failed = 1;
     env->api = &copy; copy.count = SZ_API_COUNT + 1;
-    if (execute("hello", "hello", env)) failed = 1;
+    if (execute("./hello", "./hello", env)) failed = 1;
     env->api = original;
     if (!failed) { print("api-compat-ok"); print_newline(); }
     return failed;

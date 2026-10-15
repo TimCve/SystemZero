@@ -1,4 +1,5 @@
 #include "desktop.h"
+#include "../shared/input.h"
 #include "../shared/version.h"
 #include "drivers/io/screen.h"
 #include "drivers/io/video.h"
@@ -7,14 +8,15 @@
 #include "drivers/disk/fs.h"
 #include "drivers/disk/ata.h"
 #include "cpu/thread.h"
+#include "variables.h"
 static desktop_t desktop;
 static env_vars_t *environment;
-typedef struct { uint32_t magic, offset; uint8_t position, color; uint16_t reserved; uint32_t check; } config_t;
+typedef struct { uint32_t magic, offset; uint8_t position, color, secondary, reserved; uint32_t check; } config_t;
 static uint8_t rtc_read(uint8_t index) {
     port_byte_out(0x70, index); return port_byte_in(0x71);
 }
 static uint32_t bcd(uint8_t n) { return (n >> 4) * 10 + (n & 15); }
-static uint32_t rtc_seconds(void) {
+uint32_t desktop_rtc_seconds(void) {
     for (uint32_t attempt = 0; attempt < 10000; attempt++) {
         if (rtc_read(10) & 0x80) continue;
         uint8_t s = rtc_read(0), m = rtc_read(2), h = rtc_read(4), mode = rtc_read(11);
@@ -28,7 +30,8 @@ static uint32_t rtc_seconds(void) {
     return 0;
 }
 static uint32_t checksum(const config_t *c) {
-    return c->magic ^ c->offset ^ c->position ^ ((uint32_t)c->color << 8) ^ 0x18b52c4du;
+    return c->magic ^ c->offset ^ c->position ^ ((uint32_t)c->color << 8) ^
+        ((uint32_t)c->secondary << 16) ^ 0x18b52c4du;
 }
 static void viewport(desktop_t *d) {
     terminal_t *t = environment->terminal;
@@ -36,28 +39,40 @@ static void viewport(desktop_t *d) {
 }
 static void recolor(env_vars_t *env, uint8_t color) {
     terminal_t *t = env->terminal; set_term_color(color);
+    uint8_t secondary = (color & 0xf0) | env->desktop->secondary_color;
     if (t) {
-        for (uint32_t i = 0; i < TERM_CELLS; i++) { t->cells[i].color = color; t->shown[i].ch = 0xff; }
+        for (uint32_t i = 0; i < TERM_CELLS; i++) {
+            t->cells[i].color = t->secondary[i] ? secondary : color; t->shown[i].ch = 0xff;
+        }
         t->clear_canvas = 1; terminal_present(t);
     } else {
-        volatile uint8_t *video = (void *)VIDEO_ADDRESS;
-        uint32_t offset = env->desktop->position ? 0 : 80 * 2;
-        for (uint32_t i = 0; i < 24 * 80; i++) video[offset + i * 2 + 1] = color;
+        volatile uint8_t *video = ui(env)?(void *)ui(env)->console.vga:(void *)VIDEO_ADDRESS;
+        uint32_t offset = ui(env) || env->desktop->position ? 0 : 80 * 2;
+        for (uint32_t i = 0; i < 24 * 80; i++)
+            video[offset + i * 2 + 1] = env->desktop->vga_secondary[i] ? secondary : color;
     }
 }
 void desktop_init(env_vars_t *env) {
     int cursor = get_cursor_position();
     environment = env;
-    desktop = (desktop_t){.seconds = rtc_seconds(), .dirty = 1, .color = env->term_color,
-        .enabled = 1, .refresh = desktop_refresh};
+    desktop = (desktop_t){.seconds = desktop_rtc_seconds(), .dirty = 1, .color = env->term_color,
+        .enabled = 1, .secondary_color = 14, .refresh = desktop_refresh};
     env->desktop = &desktop;
     uint8_t previous = selected_ata_drive(); select_drive(env->system_drive);
-    config_t config;
-    if (file_read_bytes(SETTINGS_FILE, &config, sizeof config, 0) == sizeof config &&
-        config.magic == 0x535a4331u && config.offset < 86400 && config.position < 2 &&
+    config_t config; uint32_t offset = 0;
+    int config_bytes=file_read_bytes("sys:/sys/config/legacy.cfg", &config, sizeof config, 0);
+    if(config_bytes!=sizeof config) config_bytes=file_read_bytes("sys:/systemzero.cfg", &config, sizeof config, 0);
+    if (config_bytes == sizeof config &&
+        (config.magic == 0x535a4331u || config.magic == 0x535a4332u) && config.offset < 86400 && config.position < 2 &&
         (config.color & 15) != (config.color >> 4) && !config.reserved && config.check == checksum(&config)) {
-        desktop.seconds = (desktop.seconds + config.offset) % 86400;
-        desktop.position = config.position; desktop.color = env->term_color = config.color;
+        int legacy = config.magic == 0x535a4331u && config.secondary == 0;
+        int current = config.magic == 0x535a4332u && config.secondary < 16 && config.secondary != (config.color >> 4);
+        if (legacy || current) {
+            desktop.seconds = (desktop.seconds + config.offset) % 86400;
+            offset = config.offset;
+            desktop.position = config.position; desktop.color = env->term_color = config.color;
+            desktop.secondary_color = legacy ? ((config.color >> 4) == 14 ? 15 : 14) : config.secondary;
+        }
     }
     select_drive(previous); viewport(&desktop);
     if (!env->terminal && !desktop.position) {
@@ -68,6 +83,7 @@ void desktop_init(env_vars_t *env) {
     if (!env->terminal) set_cursor_position(cursor);
     recolor(env, env->term_color);
     desktop_command(env, "shell");
+    variables_init(env, offset);
 }
 void desktop_tick(void) {
     if (!desktop.enabled) return;
@@ -84,7 +100,7 @@ void desktop_command(env_vars_t *env, const char *command) {
 }
 void desktop_refresh(void) {
     if (!environment || !desktop.enabled || !desktop.dirty) return;
-    thread_guard_enter(); desktop.dirty = 0;
+    thread_guard_enter(); ui_paint(environment,0); desktop.dirty = 0;
     terminal_t *t = environment->terminal;
     uint32_t columns = t ? t->width / TERM_FONT_WIDTH : 80;
     if (columns > 100) columns = 100;
@@ -113,22 +129,20 @@ void desktop_refresh(void) {
         uint32_t row = desktop.position ? 24 : 0;
         for (uint32_t col = 0; col < columns; col++) video[row * 80 + col] = 0x7000 | (uint8_t)desktop.bar[col];
     }
-    thread_guard_leave();
+    ui_paint(environment,1); thread_guard_leave();
 }
-int desktop_settings(env_vars_t *env, uint32_t seconds, uint32_t position, uint32_t color) {
-    if (seconds >= 86400 || position > 1 || color > 255 || (color & 15) == (color >> 4)) return -1;
-    config_t config = {.magic = 0x535a4331u,
-        .offset = (seconds + 86400 - rtc_seconds()) % 86400, .position = position, .color = color};
-    config.check = checksum(&config);
-    uint8_t previous = selected_ata_drive(); select_drive(env->system_drive);
-    int saved = file_replace(SETTINGS_FILE, &config, sizeof config); select_drive(previous);
-    if (!saved) return -1;
+int desktop_settings(env_vars_t *env, uint32_t seconds, uint32_t position, uint32_t color, uint32_t secondary) {
+    return variables_settings(env, seconds, position, color, secondary);
+}
+void desktop_apply(env_vars_t *env, uint32_t seconds, uint32_t position, uint32_t color, uint32_t secondary) {
     desktop_t *d = env->desktop; terminal_t *t = env->terminal;
-    if (!d) return -1;
+    if (!d || seconds >= 86400 || position > 1 || color > 255 || secondary > 15 ||
+        (color & 15) == (color >> 4) || secondary == (color >> 4)) return;
+    ui_paint(env,0);
     if (t) {
         uint32_t old_y = d->position ? t->height - STATUS_HEIGHT : 0;
         for (uint32_t y = old_y; y < old_y + STATUS_HEIGHT; y++)
-            for (uint32_t x = 0; x < t->width; x++) t->pixels[y * t->pitch + x] = terminal_palette(color >> 4);
+            for (uint32_t x = 0; x < t->width; x++) t->pixels[y * t->pitch + x] = terminal_color(t, color >> 4);
     } else if (d->position != position) {
         /* Preserve the 24-row text viewport while moving its reserved row. */
         volatile uint16_t *video = (void *)VIDEO_ADDRESS;
@@ -138,6 +152,7 @@ int desktop_settings(env_vars_t *env, uint32_t seconds, uint32_t position, uint3
         d->position = position; set_cursor_position(cursor);
     }
     d->position = position; d->seconds = seconds; d->milliseconds = 0; d->color = env->term_color = color;
+    d->secondary_color = secondary;
     viewport(d); recolor(env, color);
-    d->dirty = 1; desktop_refresh(); return 0;
+    d->dirty = 1; desktop_refresh();
 }
